@@ -31,18 +31,18 @@ export function TestNoteCell({ jobId, initialNote }: Props) {
         onChange={(e) => setValue(e.target.value)}
         rows={2}
         placeholder="测后反馈…"
-        className="w-full resize-y rounded border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+        className="w-full resize-y rounded-lg border border-zinc-700 bg-[#121110] px-2 py-1 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#FF9D3C]/50"
       />
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={save}
           disabled={pending}
-          className="rounded bg-zinc-200 px-2 py-0.5 text-xs text-zinc-800 hover:bg-zinc-300 disabled:opacity-50 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+          className="rounded-md border border-zinc-600 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
         >
           {pending ? "…" : "保存"}
         </button>
-        {error ? <span className="text-xs text-red-600">{error}</span> : null}
+        {error ? <span className="text-xs text-red-400">{error}</span> : null}
       </div>
     </div>
   );

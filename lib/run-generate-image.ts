@@ -4,6 +4,7 @@ import { getEnabledImageModels, getImageModel } from "@/lib/models";
 import { validatePromptInput } from "@/lib/prompt/validate";
 import { requestUpstreamImage } from "@/lib/upstream/image-generation";
 import { persistJobImageToStorage } from "@/lib/storage/persist-job-image";
+import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
 
 const MAX_TEST_NOTE = 2000;
 
@@ -12,7 +13,7 @@ export type GenerateImageResult =
   | { ok: false; error: string; jobId?: string };
 
 /**
- * Server-only: auth、扣次、上游出图、写入 Storage 并记 48h 签名链（失败则回落上游 URL）。
+ * Server-only: auth、（可选）扣次、上游出图、写入 Storage 并记 48h 签名链（失败则回落上游 URL）。
  */
 export async function runGenerateImageJob(
   promptRaw: string,
@@ -62,7 +63,8 @@ export async function runGenerateImageJob(
     return { ok: false, error: "用户资料不存在" };
   }
 
-  if (profile.balance_images < 1) {
+  const testing = isGenerationTestingMode();
+  if (!testing && profile.balance_images < 1) {
     return { ok: false, error: "次数不足，请联系运营充值" };
   }
 
@@ -117,6 +119,16 @@ export async function runGenerateImageJob(
 
   if (successUpdateError) {
     return { ok: false, error: "图片已生成但保存记录失败，请联系管理员。", jobId };
+  }
+
+  if (testing) {
+    return {
+      ok: true,
+      jobId,
+      imageUrl: finalUrl,
+      balanceImages: profile.balance_images,
+      priceCny: selected.priceCny,
+    };
   }
 
   const newBalance = profile.balance_images - 1;

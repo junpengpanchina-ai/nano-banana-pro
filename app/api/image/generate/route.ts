@@ -5,7 +5,7 @@ import { runGenerateImageJob } from "@/lib/run-generate-image";
 export const maxDuration = 120;
 
 /**
- * 生图端口：与 Server Action 相同逻辑（写 image_jobs、扣次、Storage 48h 签名链）。
+ * 生图端口：与 Server Action 相同逻辑（写 image_jobs、可选扣次、Storage 48h 签名链）。
  * 需登录 Cookie。供脚本 / 外部客户端与网页同源调用。
  */
 export async function POST(request: Request) {

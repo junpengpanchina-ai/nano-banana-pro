@@ -4,7 +4,7 @@ export type ImageModelConfig = {
   /** 前端展示名 */
   label: string;
   description: string;
-  /** 单张对用户计价（元）；扣次仍为每次成功 1 次 balance_images */
+  /** 后台记账用（元），当前前端不展示；非内测时每次成功扣 1 次 balance_images */
   priceCny: number;
   enabled: boolean;
 };
@@ -15,16 +15,9 @@ export type ImageModelConfig = {
  */
 export const IMAGE_MODELS: ImageModelConfig[] = [
   {
-    id: "nano-banana-pro",
-    label: "Nana Pro",
-    description: "通用测试、稳定出图。",
-    priceCny: 0.6,
-    enabled: true,
-  },
-  {
     id: "nano-banana-fast",
-    label: "Nana Fast",
-    description: "快速草图、低成本测试。",
+    label: "Nano Banana Fast",
+    description: "与官方文档示例 model 一致；通用测试、快速出图。",
     priceCny: 0.6,
     enabled: true,
   },

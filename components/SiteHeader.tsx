@@ -1,38 +1,54 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
+import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
 
 export async function SiteHeader() {
+  const testingMode = isGenerationTestingMode();
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
+  let balance: number | null = null;
+  if (user) {
+    const { data: profile } = await supabase.from("profiles").select("balance_images").eq("id", user.id).single();
+    balance = profile?.balance_images ?? null;
+  }
+
   return (
-    <header className="border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-        <Link href="/" className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          图片生成小工具
+    <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-[#0F0E0C]/90 backdrop-blur-md">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+        <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FF9D3C] text-sm text-[#0F0E0C]">
+            N
+          </span>
+          <span>
+            Nano Banana<span className="font-normal text-zinc-500"> · 图片站</span>
+          </span>
         </Link>
-        <nav className="flex flex-wrap items-center gap-3 text-sm">
-          <Link
-            href="/generate"
-            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
-            生成
+        <nav className="flex flex-wrap items-center gap-2 text-sm sm:gap-4">
+          <Link href="/generate" className="text-zinc-400 transition hover:text-white">
+            创作
           </Link>
-          <Link
-            href="/dashboard"
-            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
+          <Link href="/dashboard" className="text-zinc-400 transition hover:text-white">
             记录
           </Link>
+          {user && testingMode ? (
+            <span className="rounded-full border border-[#FF9D3C]/40 bg-[#FF9D3C]/10 px-3 py-1 text-xs font-semibold text-[#FF9D3C]">
+              内测 · 不限
+            </span>
+          ) : user && balance !== null ? (
+            <span className="rounded-full border border-[#FF9D3C]/40 bg-[#FF9D3C]/10 px-3 py-1 text-xs font-semibold tabular-nums text-[#FF9D3C]">
+              {balance} 次
+            </span>
+          ) : null}
           {user ? (
             <LogoutButton />
           ) : (
             <Link
               href="/login"
-              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+              className="rounded-full bg-[#FF9D3C] px-4 py-1.5 text-sm font-semibold text-[#0F0E0C] transition hover:bg-[#ffb05a]"
             >
               登录
             </Link>

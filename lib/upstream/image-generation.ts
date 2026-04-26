@@ -35,6 +35,27 @@ function parseJsonSafe(text: string): unknown {
   }
 }
 
+/** 官方文档要求携带 `urls`（参考图）；纯文生图可传空数组，或通过环境变量传入 URL。 */
+function getUpstreamReferenceUrls(): string[] {
+  const raw = process.env.UPSTREAM_REFERENCE_URLS?.trim();
+  if (!raw) return [];
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+        return (parsed as string[]).map((u) => u.trim()).filter(Boolean);
+      }
+    } catch {
+      return [];
+    }
+    return [];
+  }
+  return raw
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function resolveDrawAndResultUrls(): { drawUrl: string; resultUrl: string } | { error: string } {
   const drawFull = process.env.UPSTREAM_DRAW_URL?.trim();
   const resultFull = process.env.UPSTREAM_RESULT_URL?.trim();
@@ -82,6 +103,7 @@ export async function requestUpstreamImage(
 
   const deadline = Date.now() + 120_000;
   const pollIntervalMs = Number(process.env.UPSTREAM_POLL_INTERVAL_MS ?? "2000") || 2000;
+  const referenceUrls = getUpstreamReferenceUrls();
 
   const controller = new AbortController();
 
@@ -97,6 +119,7 @@ export async function requestUpstreamImage(
         prompt,
         aspectRatio,
         imageSize,
+        urls: referenceUrls,
         webHook: "-1",
         shutProgress: false,
       }),

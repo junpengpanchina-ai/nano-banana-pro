@@ -1,13 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { SUPABASE_DEV_PLACEHOLDER_ANON_KEY, SUPABASE_DEV_PLACEHOLDER_URL } from "@/lib/supabase/env";
 
 export async function createClient() {
   const cookieStore = await cookies();
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || SUPABASE_DEV_PLACEHOLDER_URL;
+  const anon =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || SUPABASE_DEV_PLACEHOLDER_ANON_KEY;
 
   return createServerClient(url, anon, {
     cookies: {

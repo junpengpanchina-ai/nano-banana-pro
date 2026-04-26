@@ -1,6 +1,6 @@
 # nano-banana-pro
 
-轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每条任务按模型配置写入 `price_cny`**（见 `lib/models.ts`），**每次成功仍扣 `balance_images` 1 次**；次数不足需运营人工充值。不接 Stripe，不做复杂分销后台。
+轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每次成功仍扣 `balance_images` 1 次**；次数不足需运营人工充值。不接 Stripe，不做复杂分销后台。（`price_cny` 仍可按模型写入库备查，当前前端不展示价格。）
 
 ---
 
@@ -19,16 +19,23 @@
 ## 功能一览
 
 - 邮箱 **注册 / 登录**（Supabase Auth）
-- **`/generate`**：多模型卡片单选、可选测试备注、提示词 → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；成功扣 `balance_images` 1 次，失败不扣
-- **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 计价 / 状态 / 图 / 可编辑测试备注）、充值记录
+- **`/generate`**：多模型卡片单选、可选测试备注、提示词 → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；默认成功扣 `balance_images` 1 次（失败不扣）；**内测**见环境变量 `GENERATION_TESTING_MODE`，开启后不扣次
+- **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、充值记录
 - **`/`**：产品介绍与入口
 - 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
+
+---
+
+## 视觉规范
+
+见仓库根目录 **[`STYLE.md`](./STYLE.md)**（Nano Banana 系深色 + 香蕉橙 + 首屏 CTA + 图廊与 Supabase 精选字段说明）。
 
 ---
 
 ## 仓库结构（要点）
 
 ```text
+STYLE.md                   # 样式与交互规范（设计 Token）
 app/
   page.tsx                 # 首页
   layout.tsx               # 根布局 + 顶栏
@@ -50,7 +57,8 @@ lib/
   api/prompt/route.ts      # POST 提示词校验
   api/image/generate/route.ts  # POST 生图 + 写库
   api/image/signed/route.ts    # GET 刷新 48h 签名
-  run-generate-image.ts    # 生成主流程（鉴权、写库、扣次、Storage）
+  run-generate-image.ts    # 生成主流程（鉴权、写库、可选扣次、Storage）
+  generation-testing-mode.ts  # 内测开关（读 GENERATION_TESTING_MODE）
   prompt/validate.ts       # 提示词校验（与 /api/prompt 共用）
   storage/                 # Storage 桶名、上传与签名
   dashboard/resolve-job-image-url.ts
@@ -76,6 +84,7 @@ supabase/
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 浏览器可访问 | `anon` 公钥 |
 | `SUPABASE_SERVICE_ROLE_KEY` | **仅服务端** | `service_role`，用于扣次、写任务、Storage 上传等；**禁止**加 `NEXT_PUBLIC_` |
 | `SUPABASE_GENERATION_BUCKET` | 仅服务端（可选） | 存生成图的桶名，默认 `generations` |
+| `GENERATION_TESTING_MODE` | 仅服务端（可选） | 设为 `1` / `true` / `yes` 时：**不校验、不扣** `balance_images`，仍写 `image_jobs` 与 Storage；顶栏与创作页显示内测文案。正式上线前关闭 |
 
 ### Supabase 直连 Postgres（可选）
 
@@ -111,15 +120,18 @@ supabase/
 
 可选：
 
+- `UPSTREAM_REFERENCE_URLS`：参考图地址，逗号/换行分隔，或 JSON 字符串数组；写入请求体 **`urls`**；留空则 **`urls: []`**（纯文生图）
 - `UPSTREAM_ASPECT_RATIO`（默认 `auto`）
 - `UPSTREAM_BANANA_IMAGE_SIZE`（默认 `1K`）
 - `UPSTREAM_POLL_INTERVAL_MS`（默认 `2000`）
+
+对接 **Grsai Nano Banana** 时，路径需与文档一致，例如：`POST .../v1/draw/nano-banana` 创建任务，`POST .../v1/draw/result` 轮询，Host 用文档中的国内或海外地址（见 `.env.example` 注释）。
 
 ---
 
 ## 上游调用逻辑（摘要）
 
-1. 向 `UPSTREAM_DRAW_URL` 发送 JSON：`model`、`prompt`、`aspectRatio`、`imageSize`、`webHook: "-1"`、`shutProgress: false`（与当前对接的轮询协议一致）。
+1. 向 `UPSTREAM_DRAW_URL` 发送 JSON（与官方文档字段名对齐）：`model`、`prompt`、`aspectRatio`、`imageSize`、**`urls`**（数组）、`webHook: "-1"`、`shutProgress: false`。
 2. 解析返回中的任务 `id`。
 3. 循环请求 `UPSTREAM_RESULT_URL`，传入 `{ id }`，直到 `status` 为 `succeeded` / `failed` 或超时（约 120s）。
 
@@ -153,7 +165,7 @@ supabase/
 
 ### 初始化
 
-1. 在 Supabase 控制台 **SQL Editor** 依次执行 `supabase/migrations/` 下 SQL（含 `20260426140000_init.sql`、`20260427120000_image_jobs_model_label.sql`、`20260428100000_job_image_storage.sql`），或  
+1. 在 Supabase 控制台 **SQL Editor** 依次执行 `supabase/migrations/` 下 SQL（含 `20260426140000_init.sql`、`20260427120000_image_jobs_model_label.sql`、`20260428100000_job_image_storage.sql`、`20260428120000_image_jobs_showcase.sql`），或  
 2. 本地安装 CLI 后：`supabase link` → `npm run db:push`。
 
 ### 表说明
@@ -187,6 +199,7 @@ supabase/
 | `cost_cny` | 成本（可空） |
 | `error_message` | 失败信息 |
 | `test_note` | 测试反馈备注（生成页可选填；仪表盘可改） |
+| `is_showcase` | 是否作为首页图廊精选（由运营 / 后台更新） |
 | `created_at` | 创建时间 |
 
 **`recharge_records`**（人工充值流水）
@@ -222,21 +235,22 @@ where id = '<user-uuid>';
 
 | 路径 | 说明 |
 |------|------|
-| `/` | 产品介绍、计费说明；未登录显示注册/登录，已登录显示去生成/我的记录 |
+| `/` | 产品介绍；未登录显示注册/登录；已登录显示次数或「内测 · 不限」（取决于 `GENERATION_TESTING_MODE`） |
 | `/login`、`/signup` | 邮箱 + 密码 |
-| `/generate` | 需登录；模型选择区、可选测试备注、提示词、剩余次数、生成、错误提示、结果图、任务 ID |
-| `/dashboard` | 需登录；余额卡片、账号信息、生成记录表（含 `model_label` / `model` / `test_note` 编辑）、充值记录表 |
+| `/generate` | 需登录；模型选择区、可选测试备注、提示词、余额或内测提示、生成、错误提示、结果图、任务 ID |
+| `/dashboard` | 需登录；余额或内测说明、账号信息、生成记录表（含 `model_label` / `model` / `test_note` 编辑）、充值记录表 |
 
-视觉：浅灰背景（`zinc-50`）、锌灰文字、**琥珀色**主按钮；支持系统深色模式。
+视觉：见 [`STYLE.md`](./STYLE.md)（深色 `#0F0E0C`、主色 `#FF9D3C`）。
 
 ---
 
 ## 业务规则（生成）
 
 - 仅 **登录用户** 可生成。
-- `balance_images < 1` 时拒绝生成。
-- 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`），再调上游；**成功**则更新为 `succeeded` 并写入 `image_url`，且 **`balance_images -= 1`**；**失败**则 `failed` 并写 `error_message`，**不扣次**。
-- **`price_cny` 与模型 id 仅由服务端 `getImageModel(modelId)` 决定**，不信任前端标价。
+- 未开启 `GENERATION_TESTING_MODE` 时：`balance_images < 1` 拒绝生成。
+- 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`），再调上游；**成功**则更新为 `succeeded` 并写入 `image_url`；**失败**则 `failed` 并写 `error_message`，**不扣次**。
+- **非内测**且成功时 **`balance_images -= 1`**；**内测模式**（`GENERATION_TESTING_MODE=1`）成功时**不扣次**，`profiles` 与 `auth.users` 仍关联每条 `image_jobs`。
+- **`price_cny` 与模型 id 仅由服务端 `getImageModel(modelId)` 决定**（不信任前端传价；界面可不展示）。
 
 ---
 
@@ -261,6 +275,7 @@ where id = '<user-uuid>';
 ```bash
 cp .env.example .env.local
 # 编辑 .env.local，填入 Supabase 与上游变量
+# 前期仅测功能、不扣次数时增加一行：GENERATION_TESTING_MODE=1
 
 npm install
 npm run dev
@@ -294,7 +309,7 @@ npm run dev
 A：确认迁移已执行且触发器 `on_auth_user_created` 存在；查看 Supabase 日志与 `auth.users` / `profiles`。
 
 **Q：生成报「服务未配置…」**  
-A：检查 Vercel 是否缺少 `UPSTREAM_DRAW_URL` + `UPSTREAM_RESULT_URL`（或 BASE + 两条 PATH）以及 `UPSTREAM_API_KEY`；模型 id 是否与上游一致（改 `lib/models.ts`）。
+A：检查是否缺少 `UPSTREAM_DRAW_URL` + `UPSTREAM_RESULT_URL`（或 BASE + 两条 PATH）以及 `UPSTREAM_API_KEY`；**轮询 URL 是否与文档一致**（Grsai 一般为 `.../v1/draw/result`）；`model` 是否与上游文档一致（改 `lib/models.ts`）。
 
 **Q：Middleware 构建警告？**  
 A：Next.js 16 可能对 `middleware` 文件有新的命名提示，不影响当前 `middleware.ts` 刷新会话的常见用法；后续可按官方文档迁移。
