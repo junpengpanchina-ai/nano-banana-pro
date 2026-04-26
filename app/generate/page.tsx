@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { GenerateClient } from "@/app/generate/generate-client";
 import { getEnabledImageModels } from "@/lib/models";
@@ -12,11 +11,11 @@ export default async function GeneratePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: profile } = await supabase.from("profiles").select("balance_images").eq("id", user.id).single();
+  const profile = user
+    ? (
+        await supabase.from("profiles").select("balance_images").eq("id", user.id).maybeSingle()
+      ).data
+    : null;
 
   const models = getEnabledImageModels().map(({ id, label, description }) => ({
     id,
@@ -28,6 +27,7 @@ export default async function GeneratePage() {
 
   return (
     <GenerateClient
+      isLoggedIn={!!user}
       initialBalance={profile?.balance_images ?? 0}
       models={models}
       testingMode={testingMode}

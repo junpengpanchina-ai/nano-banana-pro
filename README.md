@@ -58,6 +58,7 @@ lib/
   api/image/generate/route.ts  # POST 生图 + 写库
   api/image/signed/route.ts    # GET 刷新 48h 签名
   run-generate-image.ts    # 生成主流程（鉴权、写库、可选扣次、Storage）
+  generation-draw-params.ts   # 画质 / 宽高比白名单与解析
   generation-testing-mode.ts  # 内测开关（读 GENERATION_TESTING_MODE）
   prompt/validate.ts       # 提示词校验（与 /api/prompt 共用）
   storage/                 # Storage 桶名、上传与签名
@@ -131,7 +132,7 @@ supabase/
 
 ## 上游调用逻辑（摘要）
 
-1. 向 `UPSTREAM_DRAW_URL` 发送 JSON（与官方文档字段名对齐）：`model`、`prompt`、`aspectRatio`、`imageSize`、**`urls`**（数组）、`webHook: "-1"`、`shutProgress: false`。
+1. 向 `UPSTREAM_DRAW_URL` 发送 JSON（与官方文档字段名对齐）：`model`、`prompt`、`aspectRatio`、`imageSize`（由创作页或 API 传入，服务端白名单校验）、**`urls`**（数组）、`webHook: "-1"`、`shutProgress: false`。
 2. 解析返回中的任务 `id`。
 3. 循环请求 `UPSTREAM_RESULT_URL`，传入 `{ id }`，直到 `status` 为 `succeeded` / `failed` 或超时（约 120s）。
 
@@ -144,7 +145,7 @@ supabase/
 | 方法 | 路径 | 作用 |
 |------|------|------|
 | `POST` | `/api/prompt` | **提示词端口**：仅校验长度与敏感词，不写库、不扣次、不调上游。Body：`{ "prompt": string }`，返回 `{ ok, prompt? \| error? }`。 |
-| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?" }`。 |
+| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?" }`（宽高比、画质由服务端白名单解析，见 `lib/generation-draw-params.ts`）。 |
 | `GET` | `/api/image/signed?jobId=<uuid>` | 为本人任务重新签发图片 URL：若存在 `storage_path` 则返回 **48h** 签名地址；否则返回已存的 `image_url`。 |
 
 网页 `/generate` 仍默认走 **Server Action**，不强制改用上述 REST。
@@ -165,7 +166,7 @@ supabase/
 
 ### 初始化
 
-1. 在 Supabase 控制台 **SQL Editor** 依次执行 `supabase/migrations/` 下 SQL（含 `20260426140000_init.sql`、`20260427120000_image_jobs_model_label.sql`、`20260428100000_job_image_storage.sql`、`20260428120000_image_jobs_showcase.sql`），或  
+1. 在 Supabase 控制台 **SQL Editor** 依次执行 `supabase/migrations/` 下 SQL（含 `20260426140000_init.sql`、`20260427120000_image_jobs_model_label.sql`、`20260428100000_job_image_storage.sql`、`20260428120000_image_jobs_showcase.sql`、`20260428140000_image_jobs_aspect_size.sql`），或  
 2. 本地安装 CLI 后：`supabase link` → `npm run db:push`。
 
 ### 表说明
@@ -199,6 +200,8 @@ supabase/
 | `cost_cny` | 成本（可空） |
 | `error_message` | 失败信息 |
 | `test_note` | 测试反馈备注（生成页可选填；仪表盘可改） |
+| `aspect_ratio` | 生成时选择的宽高比（如 `auto`、`16:9`） |
+| `image_size` | 生成时选择的画质（`1K` / `2K` / `4K`） |
 | `is_showcase` | 是否作为首页图廊精选（由运营 / 后台更新） |
 | `created_at` | 创建时间 |
 
@@ -237,7 +240,7 @@ where id = '<user-uuid>';
 |------|------|
 | `/` | 产品介绍；未登录显示注册/登录；已登录显示次数或「内测 · 不限」（取决于 `GENERATION_TESTING_MODE`） |
 | `/login`、`/signup` | 邮箱 + 密码 |
-| `/generate` | 需登录；模型选择区、可选测试备注、提示词、余额或内测提示、生成、错误提示、结果图、任务 ID |
+| `/generate` | **未登录也可浏览**双栏与示例预览；登录后生成。左栏模型 / 画质(1K–4K) / 宽高比 / 提示词 / 备注；右栏结果；`/login?next=/generate` 登录后回到本页 |
 | `/dashboard` | 需登录；余额或内测说明、账号信息、生成记录表（含 `model_label` / `model` / `test_note` 编辑）、充值记录表 |
 
 视觉：见 [`STYLE.md`](./STYLE.md)（深色 `#0F0E0C`、主色 `#FF9D3C`）。
@@ -248,7 +251,7 @@ where id = '<user-uuid>';
 
 - 仅 **登录用户** 可生成。
 - 未开启 `GENERATION_TESTING_MODE` 时：`balance_images < 1` 拒绝生成。
-- 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`），再调上游；**成功**则更新为 `succeeded` 并写入 `image_url`；**失败**则 `failed` 并写 `error_message`，**不扣次**。
+- 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`、`aspect_ratio`、`image_size`），再调上游（请求体含 `aspectRatio`、`imageSize`）；**成功**则更新为 `succeeded` 并写入 `image_url`；**失败**则 `failed` 并写 `error_message`，**不扣次**。
 - **非内测**且成功时 **`balance_images -= 1`**；**内测模式**（`GENERATION_TESTING_MODE=1`）成功时**不扣次**，`profiles` 与 `auth.users` 仍关联每条 `image_jobs`。
 - **`price_cny` 与模型 id 仅由服务端 `getImageModel(modelId)` 决定**（不信任前端传价；界面可不展示）。
 

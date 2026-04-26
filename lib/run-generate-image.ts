@@ -5,6 +5,7 @@ import { validatePromptInput } from "@/lib/prompt/validate";
 import { requestUpstreamImage } from "@/lib/upstream/image-generation";
 import { persistJobImageToStorage } from "@/lib/storage/persist-job-image";
 import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
+import { parseAspectRatio, parseImageSize } from "@/lib/generation-draw-params";
 
 const MAX_TEST_NOTE = 2000;
 
@@ -15,10 +16,16 @@ export type GenerateImageResult =
 /**
  * Server-only: auth、（可选）扣次、上游出图、写入 Storage 并记 48h 签名链（失败则回落上游 URL）。
  */
+export type RunGenerateDrawInput = {
+  aspectRatio?: string | null;
+  imageSize?: string | null;
+};
+
 export async function runGenerateImageJob(
   promptRaw: string,
   modelIdRaw: string,
   testNoteRaw?: string | null,
+  drawInput?: RunGenerateDrawInput,
 ): Promise<GenerateImageResult> {
   if (getEnabledImageModels().length === 0) {
     return { ok: false, error: "暂无可用模型，请联系管理员。" };
@@ -40,6 +47,9 @@ export async function runGenerateImageJob(
   if (testNoteRaw != null && String(testNoteRaw).trim()) {
     testNote = String(testNoteRaw).trim().slice(0, MAX_TEST_NOTE);
   }
+
+  const aspectRatio = parseAspectRatio(drawInput?.aspectRatio);
+  const imageSize = parseImageSize(drawInput?.imageSize);
 
   const supabase = await createClient();
   const {
@@ -77,6 +87,8 @@ export async function runGenerateImageJob(
       model_label: selected.label,
       price_cny: selected.priceCny,
       test_note: testNote,
+      aspect_ratio: aspectRatio,
+      image_size: imageSize,
       status: "pending",
     })
     .select("id")
@@ -88,7 +100,7 @@ export async function runGenerateImageJob(
 
   const jobId = job.id as string;
 
-  const upstream = await requestUpstreamImage(prompt, selected.id);
+  const upstream = await requestUpstreamImage(prompt, selected.id, { aspectRatio, imageSize });
 
   if (!upstream.ok) {
     await admin

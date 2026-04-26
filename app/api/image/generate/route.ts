@@ -18,7 +18,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { prompt?: unknown; modelId?: unknown; testNote?: unknown };
+  let body: {
+    prompt?: unknown;
+    modelId?: unknown;
+    testNote?: unknown;
+    aspectRatio?: unknown;
+    imageSize?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -33,8 +39,10 @@ export async function POST(request: Request) {
       : typeof body.testNote === "string"
         ? body.testNote
         : null;
+  const aspectRatio = typeof body.aspectRatio === "string" ? body.aspectRatio : null;
+  const imageSize = typeof body.imageSize === "string" ? body.imageSize : null;
 
-  const result = await runGenerateImageJob(prompt, modelId, testNote);
+  const result = await runGenerateImageJob(prompt, modelId, testNote, { aspectRatio, imageSize });
 
   if (!result.ok) {
     const err = result.error;

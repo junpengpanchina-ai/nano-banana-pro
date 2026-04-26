@@ -82,14 +82,21 @@ function resolveDrawAndResultUrls(): { drawUrl: string; resultUrl: string } | { 
  * 轮询式出图：创建任务（webHook 为立即返回 id）→ 轮询结果。
  * 所有 URL 与密钥仅从环境变量读取，仓库内不写死任何第三方 Host 或路径。
  */
+export type UpstreamDrawBodyParams = {
+  aspectRatio: string;
+  imageSize: string;
+};
+
 export async function requestUpstreamImage(
   prompt: string,
   /** 上游 JSON 里的 model，由服务端校验后的 id */
   modelId: string,
+  /** 已由服务端白名单校验的宽高比与画质 */
+  draw: UpstreamDrawBodyParams,
 ): Promise<UpstreamImageResult> {
   const apiKey = process.env.UPSTREAM_API_KEY;
-  const aspectRatio = process.env.UPSTREAM_ASPECT_RATIO ?? "auto";
-  const imageSize = process.env.UPSTREAM_BANANA_IMAGE_SIZE ?? "1K";
+  const aspectRatio = draw.aspectRatio || process.env.UPSTREAM_ASPECT_RATIO || "auto";
+  const imageSize = draw.imageSize || process.env.UPSTREAM_BANANA_IMAGE_SIZE || "1K";
 
   const urls = resolveDrawAndResultUrls();
   if ("error" in urls) {
