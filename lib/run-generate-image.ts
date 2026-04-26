@@ -1,28 +1,43 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PRICE_PER_IMAGE_CNY, MAX_PROMPT_LENGTH } from "@/lib/constants";
-import { promptFailsSensitiveCheck } from "@/lib/sensitive";
+import { getEnabledImageModels, getImageModel } from "@/lib/models";
+import { validatePromptInput } from "@/lib/prompt/validate";
 import { requestUpstreamImage } from "@/lib/upstream/image-generation";
+import { persistJobImageToStorage } from "@/lib/storage/persist-job-image";
+
+const MAX_TEST_NOTE = 2000;
 
 export type GenerateImageResult =
   | { ok: true; jobId: string; imageUrl: string; balanceImages: number; priceCny: number }
   | { ok: false; error: string; jobId?: string };
 
 /**
- * Server-only: auth、扣次、上游出图。上游地址与密钥仅从环境变量读取。
+ * Server-only: auth、扣次、上游出图、写入 Storage 并记 48h 签名链（失败则回落上游 URL）。
  */
-export async function runGenerateImageJob(promptRaw: string): Promise<GenerateImageResult> {
-  const prompt = promptRaw.trim();
-  if (!prompt) {
-    return { ok: false, error: "请输入提示词" };
-  }
-  if (prompt.length > MAX_PROMPT_LENGTH) {
-    return { ok: false, error: `提示词最长 ${MAX_PROMPT_LENGTH} 字` };
+export async function runGenerateImageJob(
+  promptRaw: string,
+  modelIdRaw: string,
+  testNoteRaw?: string | null,
+): Promise<GenerateImageResult> {
+  if (getEnabledImageModels().length === 0) {
+    return { ok: false, error: "暂无可用模型，请联系管理员。" };
   }
 
-  const sensitive = promptFailsSensitiveCheck(prompt);
-  if (sensitive) {
-    return { ok: false, error: sensitive };
+  const validated = validatePromptInput(promptRaw);
+  if (!validated.ok) {
+    return { ok: false, error: validated.error };
+  }
+  const prompt = validated.prompt;
+
+  const modelId = modelIdRaw.trim();
+  const selected = getImageModel(modelId);
+  if (!selected) {
+    return { ok: false, error: "模型不可用或未启用" };
+  }
+
+  let testNote: string | null = null;
+  if (testNoteRaw != null && String(testNoteRaw).trim()) {
+    testNote = String(testNoteRaw).trim().slice(0, MAX_TEST_NOTE);
   }
 
   const supabase = await createClient();
@@ -36,10 +51,6 @@ export async function runGenerateImageJob(promptRaw: string): Promise<GenerateIm
   }
 
   const admin = createAdminClient();
-  const model = process.env.UPSTREAM_MODEL?.trim();
-  if (!model) {
-    return { ok: false, error: "服务未配置绘图模型" };
-  }
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
@@ -60,9 +71,11 @@ export async function runGenerateImageJob(promptRaw: string): Promise<GenerateIm
     .insert({
       user_id: user.id,
       prompt,
-      model,
+      model: selected.id,
+      model_label: selected.label,
+      price_cny: selected.priceCny,
+      test_note: testNote,
       status: "pending",
-      price_cny: PRICE_PER_IMAGE_CNY,
     })
     .select("id")
     .single();
@@ -73,7 +86,7 @@ export async function runGenerateImageJob(promptRaw: string): Promise<GenerateIm
 
   const jobId = job.id as string;
 
-  const upstream = await requestUpstreamImage(prompt);
+  const upstream = await requestUpstreamImage(prompt, selected.id);
 
   if (!upstream.ok) {
     await admin
@@ -88,11 +101,16 @@ export async function runGenerateImageJob(promptRaw: string): Promise<GenerateIm
     return { ok: false, error: upstream.error, jobId };
   }
 
+  const persisted = await persistJobImageToStorage(admin, user.id, jobId, upstream.imageUrl);
+
+  const finalUrl = persisted.ok ? persisted.displayUrl : persisted.fallbackUrl;
+
   const { error: successUpdateError } = await admin
     .from("image_jobs")
     .update({
       status: "succeeded",
-      image_url: upstream.imageUrl,
+      image_url: finalUrl,
+      storage_path: persisted.ok ? persisted.storagePath : null,
       upstream_request_id: upstream.upstreamRequestId ?? null,
     })
     .eq("id", jobId);
@@ -118,8 +136,8 @@ export async function runGenerateImageJob(promptRaw: string): Promise<GenerateIm
   return {
     ok: true,
     jobId,
-    imageUrl: upstream.imageUrl,
+    imageUrl: finalUrl,
     balanceImages: newBalance,
-    priceCny: PRICE_PER_IMAGE_CNY,
+    priceCny: selected.priceCny,
   };
 }

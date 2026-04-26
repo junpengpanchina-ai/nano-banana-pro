@@ -16,13 +16,13 @@ export default async function Home() {
         网页提交需求，按张出图
       </h1>
       <p className="mt-6 text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-        适合朋友圈配图、电商素材、头像、海报灵感、短视频封面草图。按张计费，{" "}
-        <span className="font-semibold text-zinc-800 dark:text-zinc-200">0.6 元/张</span>
-        ，先充值后使用；后台记录每次生成与结果。
+        适合朋友圈配图、电商素材、头像、海报灵感、短视频封面草图。多模型可选、按模型单价记账（如{" "}
+        <span className="font-semibold text-zinc-800 dark:text-zinc-200">0.6～0.8 元/张</span>
+        ），每次成功仍扣 1 次余额；先充值后使用；后台记录每次生成与结果。
       </p>
       <ul className="mt-8 list-inside list-disc space-y-2 text-zinc-600 dark:text-zinc-400">
         <li>邮箱注册登录</li>
-        <li>输入提示词一键生成</li>
+        <li>多模型对比 + 提示词生成</li>
         <li>成功扣 1 次，失败不扣</li>
         <li>充值与对账由运营人工处理（不接 Stripe）</li>
       </ul>

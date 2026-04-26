@@ -1,36 +1,306 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# nano-banana-pro
 
-## Getting Started
+轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每条任务按模型配置写入 `price_cny`**（见 `lib/models.ts`），**每次成功仍扣 `balance_images` 1 次**；次数不足需运营人工充值。不接 Stripe，不做复杂分销后台。
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 框架 | Next.js 16（App Router） |
+| 语言 | TypeScript |
+| 样式 | Tailwind CSS 4 |
+| 认证与数据库 | Supabase（Auth + Postgres + RLS） |
+| 部署 | Vercel（推荐） |
+
+---
+
+## 功能一览
+
+- 邮箱 **注册 / 登录**（Supabase Auth）
+- **`/generate`**：多模型卡片单选、可选测试备注、提示词 → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；成功扣 `balance_images` 1 次，失败不扣
+- **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 计价 / 状态 / 图 / 可编辑测试备注）、充值记录
+- **`/`**：产品介绍与入口
+- 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
+
+---
+
+## 仓库结构（要点）
+
+```text
+app/
+  page.tsx                 # 首页
+  layout.tsx               # 根布局 + 顶栏
+  login/                   # 登录
+  signup/                  # 注册
+  generate/
+    page.tsx               # 生成页（服务端鉴权 + maxDuration）
+    generate-client.tsx    # 表单与结果展示（客户端）
+    actions.ts             # Server Action：submitGenerateImage
+  dashboard/
+    page.tsx               # 记录与余额
+    actions.ts             # 更新 test_note
+components/
+  SiteHeader.tsx
+  LogoutButton.tsx
+  dashboard/TestNoteCell.tsx
+lib/
+  models.ts                # 可选模型列表（id / 展示名 / 价格 / enabled）
+  api/prompt/route.ts      # POST 提示词校验
+  api/image/generate/route.ts  # POST 生图 + 写库
+  api/image/signed/route.ts    # GET 刷新 48h 签名
+  run-generate-image.ts    # 生成主流程（鉴权、写库、扣次、Storage）
+  prompt/validate.ts       # 提示词校验（与 /api/prompt 共用）
+  storage/                 # Storage 桶名、上传与签名
+  dashboard/resolve-job-image-url.ts
+  upstream/image-generation.ts  # 上游：创建任务 + 轮询结果
+  supabase/                # client / server / admin / middleware
+middleware.ts              # 刷新 Supabase 会话
+supabase/
+  config.toml              # 本地 CLI 端口等
+  migrations/*.sql         # 数据库结构
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 环境变量
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+复制 `.env.example` 为 `.env.local`（本地）或在 **Vercel → Settings → Environment Variables** 中配置。
 
-## Learn More
+### Supabase（应用必配）
 
-To learn more about Next.js, take a look at the following resources:
+| 变量 | 可见性 | 说明 |
+|------|--------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | 浏览器可访问 | 项目 HTTPS URL（API 默认 **443**） |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 浏览器可访问 | `anon` 公钥 |
+| `SUPABASE_SERVICE_ROLE_KEY` | **仅服务端** | `service_role`，用于扣次、写任务、Storage 上传等；**禁止**加 `NEXT_PUBLIC_` |
+| `SUPABASE_GENERATION_BUCKET` | 仅服务端（可选） | 存生成图的桶名，默认 `generations` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Supabase 直连 Postgres（可选）
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+用于 Prisma / psql / 数据分析等，**本仓库业务代码不依赖** `DATABASE_URL`。
 
-## Deploy on Vercel
+| 场景 | 典型端口 |
+|------|-----------|
+| HTTPS API（JS 客户端） | **443**（一般省略） |
+| 直连 Session / Direct | **5432** |
+| Transaction pooler | **6543** |
+| 本地 `supabase start` 的 Postgres | 见 `supabase/config.toml` → `[db] port`（默认 **54322**） |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 上游绘图（服务端必配）
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 变量 | 说明 |
+|------|------|
+| `UPSTREAM_API_KEY` | Bearer Token |
+
+模型 id 在 **`lib/models.ts`** 的 `IMAGE_MODELS` 中维护，**不再使用** `UPSTREAM_MODEL` 环境变量。
+
+**推荐**：两条完整 HTTPS 地址（在 Vercel 填写，勿提交密钥到公开仓库）：
+
+| 变量 | 说明 |
+|------|------|
+| `UPSTREAM_DRAW_URL` | 创建绘图任务的 **完整** POST URL |
+| `UPSTREAM_RESULT_URL` | 轮询任务结果的 **完整** POST URL |
+
+**或**拆成 Host + 路径（三者同时存在时由代码拼接）：
+
+- `UPSTREAM_BASE_URL`
+- `UPSTREAM_DRAW_PATH`
+- `UPSTREAM_RESULT_PATH`
+
+可选：
+
+- `UPSTREAM_ASPECT_RATIO`（默认 `auto`）
+- `UPSTREAM_BANANA_IMAGE_SIZE`（默认 `1K`）
+- `UPSTREAM_POLL_INTERVAL_MS`（默认 `2000`）
+
+---
+
+## 上游调用逻辑（摘要）
+
+1. 向 `UPSTREAM_DRAW_URL` 发送 JSON：`model`、`prompt`、`aspectRatio`、`imageSize`、`webHook: "-1"`、`shutProgress: false`（与当前对接的轮询协议一致）。
+2. 解析返回中的任务 `id`。
+3. 循环请求 `UPSTREAM_RESULT_URL`，传入 `{ id }`，直到 `status` 为 `succeeded` / `failed` 或超时（约 120s）。
+
+具体字段以你实际配置的上游文档为准；实现见 `lib/upstream/image-generation.ts`。
+
+---
+
+## HTTP 接口（与站点同源、需登录 Cookie）
+
+| 方法 | 路径 | 作用 |
+|------|------|------|
+| `POST` | `/api/prompt` | **提示词端口**：仅校验长度与敏感词，不写库、不扣次、不调上游。Body：`{ "prompt": string }`，返回 `{ ok, prompt? \| error? }`。 |
+| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?" }`。 |
+| `GET` | `/api/image/signed?jobId=<uuid>` | 为本人任务重新签发图片 URL：若存在 `storage_path` 则返回 **48h** 签名地址；否则返回已存的 `image_url`。 |
+
+网页 `/generate` 仍默认走 **Server Action**，不强制改用上述 REST。
+
+---
+
+## 图片落库与 48 小时有效链接
+
+1. 生成成功后，服务端从上游临时 URL **下载**图片，上传到 Supabase Storage 私有桶（默认名 **`generations`**，可用 `SUPABASE_GENERATION_BUCKET` 覆盖）。  
+2. `image_jobs.storage_path` 记录对象路径；`image_jobs.image_url` 写入当时签发的 **48 小时**有效签名 URL（见 `lib/storage/generation-bucket.ts` 中 `STORAGE_IMAGE_TTL_SECONDS`）。  
+3. 若上传失败（未建桶、权限等），会**回落**为上游直链写入 `image_url`（上游链接通常更短时效，以服务商为准）。  
+4. **仪表盘**每次加载会为有 `storage_path` 的记录**重新签发**新的 48h 链接，便于长期回看。  
+5. 请在 **Supabase Dashboard → Storage** 创建私有桶 `generations`，并执行迁移 `20260428100000_job_image_storage.sql` 增加 `storage_path` 列。
+
+---
+
+## Supabase 数据库
+
+### 初始化
+
+1. 在 Supabase 控制台 **SQL Editor** 依次执行 `supabase/migrations/` 下 SQL（含 `20260426140000_init.sql`、`20260427120000_image_jobs_model_label.sql`、`20260428100000_job_image_storage.sql`），或  
+2. 本地安装 CLI 后：`supabase link` → `npm run db:push`。
+
+### 表说明
+
+**`profiles`**（与 `auth.users` 1:1）
+
+| 字段 | 说明 |
+|------|------|
+| `id` | 用户 UUID |
+| `email` | 邮箱 |
+| `display_name` | 昵称 |
+| `balance_images` | 剩余可生成张数 |
+| `created_at` | 创建时间 |
+
+注册后由触发器自动插入，`balance_images` 默认 `0`；客户端无法私自改余额（见库内触发器 + RLS）。
+
+**`image_jobs`**
+
+| 字段 | 说明 |
+|------|------|
+| `id` | 任务 UUID |
+| `user_id` | 用户 |
+| `prompt` | 提示词 |
+| `model` | 上游真实模型 id |
+| `model_label` | 前端展示名（如 Nana Pro） |
+| `status` | `pending` / `succeeded` / `failed` |
+| `image_url` | 结果图访问地址（优先为 Storage 签名 URL，约 48h） |
+| `storage_path` | Storage 内路径（存在则仪表盘可反复签发 48h 链接） |
+| `upstream_request_id` | 上游任务 id（可空） |
+| `price_cny` | 对用户计价（按 `lib/models.ts`） |
+| `cost_cny` | 成本（可空） |
+| `error_message` | 失败信息 |
+| `test_note` | 测试反馈备注（生成页可选填；仪表盘可改） |
+| `created_at` | 创建时间 |
+
+**`recharge_records`**（人工充值流水）
+
+| 字段 | 说明 |
+|------|------|
+| `user_id` | 用户 |
+| `amount_cny` | 收款金额 |
+| `images_added` | 增加张数 |
+| `payment_method` | 如微信 / 支付宝 |
+| `note` | 备注 |
+
+### 人工充值示例（在 SQL Editor 执行）
+
+将 `<user-uuid>` 换成真实 `profiles.id`：
+
+```sql
+insert into public.recharge_records (user_id, amount_cny, images_added, payment_method, note)
+values ('<user-uuid>', 6.00, 10, 'wechat', '人工充值');
+
+update public.profiles
+set balance_images = balance_images + 10
+where id = '<user-uuid>';
+```
+
+### Auth 设置建议
+
+- 若注册后无法登录，检查 Supabase **Authentication** 是否开启邮箱确认；开发阶段可关闭「Confirm email」以便快速联调。
+
+---
+
+## 前端页面说明
+
+| 路径 | 说明 |
+|------|------|
+| `/` | 产品介绍、计费说明；未登录显示注册/登录，已登录显示去生成/我的记录 |
+| `/login`、`/signup` | 邮箱 + 密码 |
+| `/generate` | 需登录；模型选择区、可选测试备注、提示词、剩余次数、生成、错误提示、结果图、任务 ID |
+| `/dashboard` | 需登录；余额卡片、账号信息、生成记录表（含 `model_label` / `model` / `test_note` 编辑）、充值记录表 |
+
+视觉：浅灰背景（`zinc-50`）、锌灰文字、**琥珀色**主按钮；支持系统深色模式。
+
+---
+
+## 业务规则（生成）
+
+- 仅 **登录用户** 可生成。
+- `balance_images < 1` 时拒绝生成。
+- 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`），再调上游；**成功**则更新为 `succeeded` 并写入 `image_url`，且 **`balance_images -= 1`**；**失败**则 `failed` 并写 `error_message`，**不扣次**。
+- **`price_cny` 与模型 id 仅由服务端 `getImageModel(modelId)` 决定**，不信任前端标价。
+
+---
+
+## NPM 脚本
+
+| 命令 | 说明 |
+|------|------|
+| `npm run dev` | 本地开发 |
+| `npm run build` | 生产构建 |
+| `npm run start` | 启动生产构建产物 |
+| `npm run lint` | ESLint |
+| `npm run db:start` | 本地启动 Supabase 栈 |
+| `npm run db:stop` | 停止本地栈 |
+| `npm run db:push` | 将 migrations 推送到已 link 的远程项目 |
+| `npm run db:reset` | 本地重置数据库 |
+| `npm run db:types` | 生成 TypeScript 类型到 `lib/database.types.ts`（需先 `supabase link`） |
+
+---
+
+## 本地开发
+
+```bash
+cp .env.example .env.local
+# 编辑 .env.local，填入 Supabase 与上游变量
+
+npm install
+npm run dev
+```
+
+浏览器打开终端提示的地址（一般为 `http://localhost:3000`）。
+
+---
+
+## 部署到 Vercel
+
+1. 将仓库连接 Vercel，Framework Preset 选 **Next.js**。  
+2. 在 Vercel 填入上述 **全部必配环境变量**（含 `SUPABASE_SERVICE_ROLE_KEY` 与上游变量）。  
+3. 部署完成后，在 Supabase 中为生产环境执行迁移（若尚未执行）。  
+
+**超时**：生成页路由配置了 `maxDuration = 120`（秒）；Vercel 不同套餐对 Serverless 上限不同，若经常超时需升级套餐或改为异步任务架构。
+
+---
+
+## 安全与合规
+
+- **切勿**将 `SUPABASE_SERVICE_ROLE_KEY`、`UPSTREAM_API_KEY` 设为 `NEXT_PUBLIC_*`。  
+- 提示词有基础敏感词拦截（`lib/sensitive.ts`），仍需在页面展示使用条款并自行把控内容合规。  
+- 上游返回的图片 URL 若有时效，长期留存需自行转存（如 Supabase Storage），当前表内仅存 URL 字符串。
+
+---
+
+## 常见问题
+
+**Q：注册后没有 profile？**  
+A：确认迁移已执行且触发器 `on_auth_user_created` 存在；查看 Supabase 日志与 `auth.users` / `profiles`。
+
+**Q：生成报「服务未配置…」**  
+A：检查 Vercel 是否缺少 `UPSTREAM_DRAW_URL` + `UPSTREAM_RESULT_URL`（或 BASE + 两条 PATH）以及 `UPSTREAM_API_KEY`；模型 id 是否与上游一致（改 `lib/models.ts`）。
+
+**Q：Middleware 构建警告？**  
+A：Next.js 16 可能对 `middleware` 文件有新的命名提示，不影响当前 `middleware.ts` 刷新会话的常见用法；后续可按官方文档迁移。
+
+---
+
+## 许可证
+
+私有项目；如需开源请自行补充 `LICENSE`。

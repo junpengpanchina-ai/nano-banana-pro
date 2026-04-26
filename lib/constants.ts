@@ -1,4 +1,2 @@
-/** CNY charged to the user per successful image (recorded on each job). */
-export const PRICE_PER_IMAGE_CNY = 0.6;
-
+/** 单张提示词最大长度。每张价格由 `lib/models.ts` 按模型配置。 */
 export const MAX_PROMPT_LENGTH = 2000;

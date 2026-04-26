@@ -61,9 +61,12 @@ function resolveDrawAndResultUrls(): { drawUrl: string; resultUrl: string } | { 
  * 轮询式出图：创建任务（webHook 为立即返回 id）→ 轮询结果。
  * 所有 URL 与密钥仅从环境变量读取，仓库内不写死任何第三方 Host 或路径。
  */
-export async function requestUpstreamImage(prompt: string): Promise<UpstreamImageResult> {
+export async function requestUpstreamImage(
+  prompt: string,
+  /** 上游 JSON 里的 model，由服务端校验后的 id */
+  modelId: string,
+): Promise<UpstreamImageResult> {
   const apiKey = process.env.UPSTREAM_API_KEY;
-  const model = process.env.UPSTREAM_MODEL;
   const aspectRatio = process.env.UPSTREAM_ASPECT_RATIO ?? "auto";
   const imageSize = process.env.UPSTREAM_BANANA_IMAGE_SIZE ?? "1K";
 
@@ -73,8 +76,8 @@ export async function requestUpstreamImage(prompt: string): Promise<UpstreamImag
   }
   const { drawUrl, resultUrl } = urls;
 
-  if (!apiKey || !model) {
-    return { ok: false, error: "服务未配置上游密钥或模型（环境变量）" };
+  if (!apiKey || !modelId.trim()) {
+    return { ok: false, error: "服务未配置上游密钥或未指定模型" };
   }
 
   const deadline = Date.now() + 120_000;
@@ -90,7 +93,7 @@ export async function requestUpstreamImage(prompt: string): Promise<UpstreamImag
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model,
+        model: modelId,
         prompt,
         aspectRatio,
         imageSize,
