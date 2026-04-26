@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAnonymousGeneratePoolUserId } from "@/lib/anonymous-generate-mode";
 import { runGenerateImageJob } from "@/lib/run-generate-image";
 
 export const maxDuration = 120;
 
 /**
  * 生图端口：与 Server Action 相同逻辑（写 image_jobs、可选扣次、Storage 48h 签名链）。
- * 需登录 Cookie。供脚本 / 外部客户端与网页同源调用。
+ * 默认需登录 Cookie；若开启内测免登录（`GENERATION_TESTING_MODE` + `ANONYMOUS_GENERATE_AS_USER_ID`）可无 Cookie 调用（慎用，易被刷量）。
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user && !getAnonymousGeneratePoolUserId()) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
     testNote?: unknown;
     aspectRatio?: unknown;
     imageSize?: unknown;
+    generationMode?: unknown;
+    referenceImageUrls?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -41,8 +44,18 @@ export async function POST(request: Request) {
         : null;
   const aspectRatio = typeof body.aspectRatio === "string" ? body.aspectRatio : null;
   const imageSize = typeof body.imageSize === "string" ? body.imageSize : null;
+  const generationMode =
+    body.generationMode === "image" || body.generationMode === "text" ? body.generationMode : "text";
+  const referenceImageUrls = Array.isArray(body.referenceImageUrls)
+    ? body.referenceImageUrls.filter((x): x is string => typeof x === "string")
+    : undefined;
 
-  const result = await runGenerateImageJob(prompt, modelId, testNote, { aspectRatio, imageSize });
+  const result = await runGenerateImageJob(prompt, modelId, testNote, {
+    aspectRatio,
+    imageSize,
+    generationMode,
+    referenceImageUrls,
+  });
 
   if (!result.ok) {
     const err = result.error;

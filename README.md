@@ -53,7 +53,7 @@ components/
   LogoutButton.tsx
   dashboard/TestNoteCell.tsx
 lib/
-  models.ts                # 可选模型列表（id / 展示名 / 价格 / enabled）
+  models.ts                # 模型 id 白名单与可选画质档位（allowedImageSizes）
   api/prompt/route.ts      # POST 提示词校验
   api/image/generate/route.ts  # POST 生图 + 写库
   api/image/signed/route.ts    # GET 刷新 48h 签名
@@ -145,7 +145,7 @@ supabase/
 | 方法 | 路径 | 作用 |
 |------|------|------|
 | `POST` | `/api/prompt` | **提示词端口**：仅校验长度与敏感词，不写库、不扣次、不调上游。Body：`{ "prompt": string }`，返回 `{ ok, prompt? \| error? }`。 |
-| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?" }`（宽高比、画质由服务端白名单解析，见 `lib/generation-draw-params.ts`）。 |
+| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?", "generationMode?", "referenceImageUrls?" }`；`generationMode` 为 `"text"`（默认）或 `"image"`；图生图时提示词至少 5 字，`referenceImageUrls` 为可选的当前用户参考图签名 URL 数组（与页面「本地上传」一致，服务端会校验域名与路径）。宽高比、画质由服务端白名单解析，见 `lib/generation-draw-params.ts`。 |
 | `GET` | `/api/image/signed?jobId=<uuid>` | 为本人任务重新签发图片 URL：若存在 `storage_path` 则返回 **48h** 签名地址；否则返回已存的 `image_url`。 |
 
 网页 `/generate` 仍默认走 **Server Action**，不强制改用上述 REST。
@@ -249,7 +249,7 @@ where id = '<user-uuid>';
 
 ## 业务规则（生成）
 
-- 仅 **登录用户** 可生成。
+- 默认仅 **登录用户** 可生成。若同时开启 **`GENERATION_TESTING_MODE=1`** 与 **`ANONYMOUS_GENERATE_AS_USER_ID=<uuid>`**（该 UUID 须在 Supabase 已注册且存在 `profiles`），则 **/generate** 与 **POST /api/image/generate** 允许未登录生成，任务记在池用户名下；**测完务必关闭两项并重新部署**，否则公网可被刷量。
 - 未开启 `GENERATION_TESTING_MODE` 时：`balance_images < 1` 拒绝生成。
 - 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`、`aspect_ratio`、`image_size`），再调上游（请求体含 `aspectRatio`、`imageSize`）；**成功**则更新为 `succeeded` 并写入 `image_url`；**失败**则 `failed` 并写 `error_message`，**不扣次**。
 - **非内测**且成功时 **`balance_images -= 1`**；**内测模式**（`GENERATION_TESTING_MODE=1`）成功时**不扣次**，`profiles` 与 `auth.users` 仍关联每条 `image_jobs`。
@@ -279,6 +279,7 @@ where id = '<user-uuid>';
 cp .env.example .env.local
 # 编辑 .env.local，填入 Supabase 与上游变量
 # 前期仅测功能、不扣次数时增加一行：GENERATION_TESTING_MODE=1
+# 批量免登录测生成时再加（须与上一行同时）：在 Supabase 注册测试号，UUID 填入 ANONYMOUS_GENERATE_AS_USER_ID=
 
 npm install
 npm run dev
@@ -286,13 +287,26 @@ npm run dev
 
 浏览器打开终端提示的地址（一般为 `http://localhost:3000`）。
 
+### Cursor：Agent 结束后自动 git 提交并推送
+
+仓库内已配置 **`.cursor/hooks.json`**：在 **Agent 本轮正常结束**（`stop` 且 `status` 为 `completed`）后，若工作区有变更，会运行 **`.cursor/hooks/auto-git-sync.sh`**（`git add -A` → `commit` → `push` 到 **`origin`** 当前分支）。
+
+本机需已配置：`git config user.name` / `user.email`、`git remote add origin …`，且 **push 无需人工输入密码**（SSH 密钥或 credential helper）。若不需要此行为：在 Cursor **Settings → Hooks** 关闭，或从 `hooks.json` 中移除 `stop` 段。
+
 ---
 
 ## 部署到 Vercel
 
 1. 将仓库连接 Vercel，Framework Preset 选 **Next.js**。  
-2. 在 Vercel 填入上述 **全部必配环境变量**（含 `SUPABASE_SERVICE_ROLE_KEY` 与上游变量）。  
-3. 部署完成后，在 Supabase 中为生产环境执行迁移（若尚未执行）。  
+2. 在 Vercel **Settings → Environment Variables** 填入上述 **全部必配环境变量**（含 `SUPABASE_SERVICE_ROLE_KEY` 与上游变量），并确认对 **Production** 勾选生效（仅填在 Development 时线上拿不到变量）。保存后 **Redeploy** 一次。  
+3. 在 **Supabase Dashboard → Authentication → URL Configuration**：把 **Site URL** 设为生产地址（如 `https://你的项目.vercel.app`），**Redirect URLs** 中加入同一域名（及自定义域），否则他机登录/回调会失败。  
+4. 部署完成后，在 Supabase 中为生产环境执行迁移（若尚未执行）。  
+
+**别人打不开 / 只能本机打开**
+
+- **Deployment Protection**：Vercel 项目 → **Settings → Deployment Protection**。若开启「仅团队成员 / Vercel 登录可访问」，未登录 Vercel 的浏览器会进不了预览或生产地址；需要对外公开时，请按团队策略关闭对外的保护或为访客配置允许规则。  
+- **环境变量未进 Production**：他机访问的是线上构建，若 `NEXT_PUBLIC_SUPABASE_*` 等未勾选 Production，页面可能异常或顶栏长期提示未配置；见上一步。  
+- **网络与地区（手机常见）**：若系统诊断显示「浏览器 / 网络正常，但网站连不上」（到 `*.vercel.app` 一段红叉），多半是 **当前运营商或地区对 Vercel 默认子域访问不稳定或被干扰**，与仓库代码、Vercel 控制台「是否部署成功」可以并存。处理思路：**绑定自定义域名**（域名 DNS 指到 Vercel 后，用 `https://你的域名` 访问）；或换 Wi‑Fi / 其他运营商试；请境外网络的朋友打开同一 `*.vercel.app` 链接，若境外可开、境内不可开，即可确认是链路问题而非应用未发布。
 
 **超时**：生成页路由配置了 `maxDuration = 120`（秒）；Vercel 不同套餐对 Serverless 上限不同，若经常超时需升级套餐或改为异步任务架构。
 
@@ -316,6 +330,9 @@ A：检查是否缺少 `UPSTREAM_DRAW_URL` + `UPSTREAM_RESULT_URL`（或 BASE + 
 
 **Q：Middleware 构建警告？**  
 A：Next.js 16 可能对 `middleware` 文件有新的命名提示，不影响当前 `middleware.ts` 刷新会话的常见用法；后续可按官方文档迁移。
+
+**Q：Vercel 部署后别的电脑打不开？**  
+A：先区分两类现象：（1）**403 / 要登录 Vercel** → 多为 **Deployment Protection** 或环境变量未进 **Production**；Supabase **Redirect URLs** 未含生产域名会导致登录异常。（2）**手机自带诊断：网络正常、网站红叉** → 多为 **`*.vercel.app` 在本地网络下不可达**，请绑 **自定义域名** 或换网络验证。详见上文「别人打不开」。
 
 ---
 

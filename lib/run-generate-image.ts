@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getEnabledImageModels, getImageModel } from "@/lib/models";
+import { allowedImageSizesFor, getEnabledImageModels, getImageModel } from "@/lib/models";
 import { validatePromptInput } from "@/lib/prompt/validate";
 import { requestUpstreamImage } from "@/lib/upstream/image-generation";
 import { persistJobImageToStorage } from "@/lib/storage/persist-job-image";
 import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
 import { parseAspectRatio, parseImageSize } from "@/lib/generation-draw-params";
+import { sanitizeReferenceImageUrls } from "@/lib/storage/validate-reference-url";
+import { getAnonymousGeneratePoolUserId } from "@/lib/anonymous-generate-mode";
 
 const MAX_TEST_NOTE = 2000;
 
@@ -19,6 +21,8 @@ export type GenerateImageResult =
 export type RunGenerateDrawInput = {
   aspectRatio?: string | null;
   imageSize?: string | null;
+  generationMode?: "text" | "image";
+  referenceImageUrls?: string[] | null;
 };
 
 export async function runGenerateImageJob(
@@ -31,7 +35,10 @@ export async function runGenerateImageJob(
     return { ok: false, error: "暂无可用模型，请联系管理员。" };
   }
 
-  const validated = validatePromptInput(promptRaw);
+  const generationModeEarly = drawInput?.generationMode === "image" ? "image" : "text";
+  const validated = validatePromptInput(promptRaw, {
+    minLength: generationModeEarly === "image" ? 5 : 1,
+  });
   if (!validated.ok) {
     return { ok: false, error: validated.error };
   }
@@ -49,28 +56,36 @@ export async function runGenerateImageJob(
   }
 
   const aspectRatio = parseAspectRatio(drawInput?.aspectRatio);
-  const imageSize = parseImageSize(drawInput?.imageSize);
+  const imageSize = parseImageSize(drawInput?.imageSize, allowedImageSizesFor(selected));
 
   const supabase = await createClient();
   const {
     data: { user },
-    error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  const poolUserId = getAnonymousGeneratePoolUserId();
+  const actingUserId = user?.id ?? poolUserId ?? null;
+  if (!actingUserId) {
     return { ok: false, error: "请先登录" };
   }
+
+  const refUrls = sanitizeReferenceImageUrls(drawInput?.referenceImageUrls ?? [], actingUserId, 10);
 
   const admin = createAdminClient();
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
     .select("balance_images")
-    .eq("id", user.id)
+    .eq("id", actingUserId)
     .maybeSingle();
 
   if (profileError || !profile) {
-    return { ok: false, error: "用户资料不存在" };
+    return {
+      ok: false,
+      error: poolUserId && !user
+        ? "免登录测试：请在 Supabase 注册测试账号并将 UUID 填入 ANONYMOUS_GENERATE_AS_USER_ID（须已有 profiles 行）"
+        : "用户资料不存在",
+    };
   }
 
   const testing = isGenerationTestingMode();
@@ -81,7 +96,7 @@ export async function runGenerateImageJob(
   const { data: job, error: insertError } = await admin
     .from("image_jobs")
     .insert({
-      user_id: user.id,
+      user_id: actingUserId,
       prompt,
       model: selected.id,
       model_label: selected.label,
@@ -100,7 +115,11 @@ export async function runGenerateImageJob(
 
   const jobId = job.id as string;
 
-  const upstream = await requestUpstreamImage(prompt, selected.id, { aspectRatio, imageSize });
+  const upstream = await requestUpstreamImage(prompt, selected.id, {
+    aspectRatio,
+    imageSize,
+    referenceUrls: refUrls,
+  });
 
   if (!upstream.ok) {
     await admin
@@ -115,7 +134,7 @@ export async function runGenerateImageJob(
     return { ok: false, error: upstream.error, jobId };
   }
 
-  const persisted = await persistJobImageToStorage(admin, user.id, jobId, upstream.imageUrl);
+  const persisted = await persistJobImageToStorage(admin, actingUserId, jobId, upstream.imageUrl);
 
   const finalUrl = persisted.ok ? persisted.displayUrl : persisted.fallbackUrl;
 
@@ -147,7 +166,7 @@ export async function runGenerateImageJob(
   const { error: balanceError } = await admin
     .from("profiles")
     .update({ balance_images: newBalance })
-    .eq("id", user.id);
+    .eq("id", actingUserId);
 
   if (balanceError) {
     return {

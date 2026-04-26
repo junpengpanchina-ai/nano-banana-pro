@@ -15,9 +15,21 @@ export const ASPECT_RATIO_OPTIONS = [
 ] as const;
 export type AspectRatioOption = (typeof ASPECT_RATIO_OPTIONS)[number];
 
-export function parseImageSize(raw: unknown): ImageSizeOption {
+/**
+ * @param allowed 若传入且非空，则必须在其中（用于如 nano-banana-fast 仅 1K）；否则回落到首项。
+ */
+export function parseImageSize(
+  raw: unknown,
+  allowed?: readonly ImageSizeOption[],
+): ImageSizeOption {
   const v = typeof raw === "string" ? raw.trim() : "";
-  return (IMAGE_SIZE_OPTIONS as readonly string[]).includes(v) ? (v as ImageSizeOption) : "1K";
+  let pick: ImageSizeOption = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(v)
+    ? (v as ImageSizeOption)
+    : "1K";
+  if (allowed && allowed.length > 0 && !allowed.includes(pick)) {
+    pick = allowed[0]!;
+  }
+  return pick;
 }
 
 export function parseAspectRatio(raw: unknown): AspectRatioOption {

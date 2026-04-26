@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
+import { isAnonymousGenerateEnabled } from "@/lib/anonymous-generate-mode";
 import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
 
 export async function SiteHeader() {
   const testingMode = isGenerationTestingMode();
+  const anonymousGenerate = isAnonymousGenerateEnabled();
   const supabase = await createClient();
   const {
     data: { user },
@@ -34,7 +36,11 @@ export async function SiteHeader() {
           <Link href="/dashboard" className="text-zinc-400 transition hover:text-white">
             记录
           </Link>
-          {user && testingMode ? (
+          {anonymousGenerate && !user ? (
+            <span className="rounded-full border border-amber-500/45 bg-amber-950/40 px-3 py-1 text-xs font-semibold text-amber-200">
+              免登录测试
+            </span>
+          ) : user && testingMode ? (
             <span className="rounded-full border border-[#FF9D3C]/40 bg-[#FF9D3C]/10 px-3 py-1 text-xs font-semibold text-[#FF9D3C]">
               内测 · 不限
             </span>

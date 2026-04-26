@@ -85,6 +85,8 @@ function resolveDrawAndResultUrls(): { drawUrl: string; resultUrl: string } | { 
 export type UpstreamDrawBodyParams = {
   aspectRatio: string;
   imageSize: string;
+  /** 用户参考图（HTTPS）；与环境变量参考图合并后写入请求体 `urls` */
+  referenceUrls?: string[];
 };
 
 export async function requestUpstreamImage(
@@ -110,7 +112,9 @@ export async function requestUpstreamImage(
 
   const deadline = Date.now() + 120_000;
   const pollIntervalMs = Number(process.env.UPSTREAM_POLL_INTERVAL_MS ?? "2000") || 2000;
-  const referenceUrls = getUpstreamReferenceUrls();
+  const userRefs = draw.referenceUrls ?? [];
+  const envRefs = getUpstreamReferenceUrls();
+  const mergedReferenceUrls = [...userRefs, ...envRefs].slice(0, 10);
 
   const controller = new AbortController();
 
@@ -126,7 +130,7 @@ export async function requestUpstreamImage(
         prompt,
         aspectRatio,
         imageSize,
-        urls: referenceUrls,
+        urls: mergedReferenceUrls,
         webHook: "-1",
         shutProgress: false,
       }),
