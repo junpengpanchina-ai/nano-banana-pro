@@ -2,6 +2,8 @@
 
 轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每次成功仍扣 `balance_images` 1 次**；次数不足需运营人工充值。不接 Stripe，不做复杂分销后台。（`price_cny` 仍可按模型写入库备查，当前前端不展示价格。）
 
+**完整合并文档（单文件 Markdown）**：[`docs/COMPLETE_GUIDE.md`](./docs/COMPLETE_GUIDE.md)
+
 ---
 
 ## 技术栈
