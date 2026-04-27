@@ -298,6 +298,8 @@ npm install && npm run dev
 | Vercel 他人打不开 | Protection、Production 环境变量、自定义域名、运营商 |
 | Middleware 警告 | Next 16 提示，可按官方迁移到 Proxy |
 
+**内测执行**：不重扩 README；自检 + 5 组固定任务 + 朋友填表见 [`BETA_TEST_MATRIX.md`](./BETA_TEST_MATRIX.md)。
+
 ---
 
 ## 16. 许可证

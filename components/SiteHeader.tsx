@@ -26,7 +26,7 @@ export async function SiteHeader() {
             N
           </span>
           <span>
-            Nano Banana<span className="font-normal text-zinc-500"> · 图片站</span>
+            Nana Image Lab<span className="font-normal text-zinc-500"> · 内测</span>
           </span>
         </Link>
         <nav className="flex flex-wrap items-center gap-2 text-sm sm:gap-4">

@@ -237,7 +237,7 @@ export function GenerateClient({
         <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-zinc-800/80 pb-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white lg:text-3xl">
-              Nano Banana <span className="font-semibold text-[#FF9D3C]">AI</span>
+              Nana Image Lab <span className="font-semibold text-[#FF9D3C]">AI</span>
             </h1>
             <p className="mt-2 max-w-xl text-sm text-zinc-400">
               左侧选择模型、画质与宽高比；图生图为<strong className="font-semibold text-zinc-300"> 提示词 + 可选参考图 </strong>

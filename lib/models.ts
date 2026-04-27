@@ -22,26 +22,30 @@ export type ImageModelConfig = {
  * 可选模型列表（不含 gpt-image-2）。
  * 服务端仅接受此表内的 `id`；`submitGenerateImage` 与绘图请求均以此为准。
  */
+/**
+ * 上游 `id` 须与供应商文档一致；仅改 `label`/`description`/`enabled` 不影响对接。
+ * 内测首轮只开放 4 个：`pro-vt` 先关，避免选项过多稀释反馈；第二轮再 `enabled: true`。
+ */
 export const IMAGE_MODELS: ImageModelConfig[] = [
   {
     id: "nano-banana-fast",
-    label: "Nano Banana Fast",
-    description: "响应快，适合草图、试词和快速迭代。",
+    label: "Nana Fast",
+    description: "快速便宜向：草图、试词、批量迭代。",
     priceCny: 0.44,
     enabled: true,
     allowedImageSizes: ["1K"],
   },
   {
     id: "nano-banana-pro",
-    label: "Nano Banana Pro",
-    description: "综合画质与指令理解，适合正式出稿与产品主图。",
+    label: "Nana Pro",
+    description: "通用主力：正式出稿、产品主图与默认首选。",
     priceCny: 1.8,
     enabled: true,
   },
   {
     id: "nano-banana-2",
-    label: "Nano Banana 2",
-    description: "速度与细节更均衡，适合日常创作与社交素材。",
+    label: "Nana HD",
+    description: "高质量均衡：电商主图、物料、封面类场景。",
     priceCny: 1.2,
     enabled: true,
   },
@@ -50,12 +54,12 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     label: "Nano Banana Pro VT",
     description: "强化文字与版式，海报、封面、带字画面更稳。",
     priceCny: 1.8,
-    enabled: true,
+    enabled: false,
   },
   {
     id: "nano-banana-pro-cl",
-    label: "Nano Banana Pro CL",
-    description: "高细节与一致性，复杂场景与精修向。",
+    label: "Nana Portrait",
+    description: "高细节向：人像、写真、五官与肢体（复杂场景与精修）。",
     priceCny: 6,
     enabled: true,
   },

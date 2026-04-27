@@ -4,8 +4,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nano Banana · AI 图片生成",
-  description: "多模型图片生成与记录，深色沉浸式体验。",
+  title: "Nana Image Lab · AI 图片生成",
+  description: "多模型对比与生成记录，深色沉浸式体验（内测）。",
 };
 
 export default function RootLayout({

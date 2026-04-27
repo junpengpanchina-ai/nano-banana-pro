@@ -42,7 +42,7 @@ export function NanoLanding({ isLoggedIn, balance, showcase, testingMode = false
           AI 图像 · 多模型测试台
         </p>
         <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
-          Nano Banana
+          Nana Image Lab
         </h1>
         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-zinc-400">
           先进的多模型图片生成与编辑流：理解中文提示词，适合朋友圈配图、电商主图、封面与草图迭代。先选模型，再一句话出图。
@@ -89,10 +89,10 @@ export function NanoLanding({ isLoggedIn, balance, showcase, testingMode = false
       {/* 是什么 */}
       <section className="border-t border-zinc-800/80 bg-[#12110f] px-4 py-14 sm:py-16">
         <div className="mx-auto max-w-5xl">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#FF9D3C]">What is Nano Banana</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">什么是 Nano Banana？</h2>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#FF9D3C]">What is Nana Image Lab</p>
+          <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">什么是 Nana Image Lab？</h2>
           <p className="mt-4 max-w-3xl text-zinc-400 leading-relaxed">
-            本站聚合多款「香蕉系」绘图模型，便于你在真实业务场景里对比速度、画质与稳定性。生成结果会写入
+            本站聚合多款绘图模型，便于你在真实业务场景里对比速度、画质与稳定性。生成结果会写入
             Supabase；精选作品可经运营在后台打上「首页展示」标记后，自动出现在下方图廊（与占位图混合展示直至凑满
             4 张）。
           </p>
@@ -123,7 +123,7 @@ export function NanoLanding({ isLoggedIn, balance, showcase, testingMode = false
                   loading="lazy"
                 />
                 <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-3 pb-3 pt-10 text-xs text-zinc-200">
-                  {item.fromDatabase ? "精选 · Nano Banana AI" : "示例画面 · Nano Banana AI"}
+                  {item.fromDatabase ? "精选 · Nana Image Lab" : "示例画面 · Nana Image Lab"}
                 </figcaption>
               </figure>
             ))}
