@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AdminCreditsForm } from "@/components/admin/AdminCreditsForm";
+import { AdminCreateUserForm } from "@/components/admin/AdminCreateUserForm";
+import { AdminDeleteUserForm } from "@/components/admin/AdminDeleteUserForm";
 
 export default async function AdminPage() {
   const admin = createAdminClient();
@@ -23,9 +25,10 @@ export default async function AdminPage() {
         <div>
           <h1 className="text-2xl font-semibold text-white">运营 · 积分</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            调整 <span className="font-mono text-zinc-300">profiles.balance_images</span>，审计写入{" "}
-            <span className="font-mono text-zinc-300">admin_balance_logs</span>；加张时同时写{" "}
-            <span className="font-mono text-zinc-300">recharge_records</span>，用户可在「记录」页看到。
+            积分存于 <span className="font-mono text-zinc-300">profiles.balance_images</span>；生成按模型扣不同积分（见{" "}
+            <span className="font-mono text-zinc-300">lib/models.ts</span> 的 <span className="font-mono">creditsPerGeneration</span>
+            ）。审计 <span className="font-mono text-zinc-300">admin_balance_logs</span>；加积分时写{" "}
+            <span className="font-mono text-zinc-300">recharge_records</span>。
           </p>
         </div>
         <Link href="/dashboard" className="text-sm text-[#FF9D3C] hover:underline">
@@ -41,8 +44,19 @@ export default async function AdminPage() {
       ) : null}
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-white">调整余额</h2>
+        <h2 className="text-lg font-medium text-white">调整积分</h2>
         <AdminCreditsForm />
+      </section>
+
+      <section className="mt-12 grid gap-10 lg:grid-cols-2">
+        <div>
+          <h2 className="text-lg font-medium text-white">新增账号</h2>
+          <AdminCreateUserForm />
+        </div>
+        <div>
+          <h2 className="text-lg font-medium text-white">删除账号</h2>
+          <AdminDeleteUserForm />
+        </div>
       </section>
 
       <section className="mt-12">
@@ -54,7 +68,7 @@ export default async function AdminPage() {
                 <th className="px-3 py-2 font-medium">UUID</th>
                 <th className="px-3 py-2 font-medium">邮箱</th>
                 <th className="px-3 py-2 font-medium">昵称</th>
-                <th className="px-3 py-2 font-medium">余额</th>
+                <th className="px-3 py-2 font-medium">积分</th>
                 <th className="px-3 py-2 font-medium">注册</th>
               </tr>
             </thead>
@@ -95,7 +109,7 @@ export default async function AdminPage() {
               <tr>
                 <th className="px-3 py-2 font-medium">时间</th>
                 <th className="px-3 py-2 font-medium">用户</th>
-                <th className="px-3 py-2 font-medium">Δ</th>
+                <th className="px-3 py-2 font-medium">Δ 积分</th>
                 <th className="px-3 py-2 font-medium">之后</th>
                 <th className="px-3 py-2 font-medium">操作者</th>
                 <th className="px-3 py-2 font-medium">备注</th>

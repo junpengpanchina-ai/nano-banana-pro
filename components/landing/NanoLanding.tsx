@@ -18,8 +18,8 @@ export function NanoLanding({ isLoggedIn, balance, showcase, testingMode = false
             <span>已登录 · 内测期间生成不限次数</span>
           ) : (
             <>
-              已登录 · 剩余可生成{" "}
-              <span className="font-semibold text-[#FF9D3C] tabular-nums">{balance ?? "—"}</span> 次
+              已登录 · 剩余积分{" "}
+              <span className="font-semibold text-[#FF9D3C] tabular-nums">{balance ?? "—"}</span>
             </>
           )
         ) : (

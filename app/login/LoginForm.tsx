@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveLoginEmail } from "@/app/login/actions";
 
 const input =
   "rounded-xl border border-zinc-700 bg-[#121110] px-3 py-2 text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#FF9D3C]/60 focus:ring-1 focus:ring-[#FF9D3C]/40";
@@ -27,7 +28,11 @@ export function LoginForm({ redirectAfterLogin, callbackError = null }: Props) {
     setLoading(true);
     try {
       const supabase = createClient();
-      const { data, error: signError } = await supabase.auth.signInWithPassword({ email, password });
+      const emailForAuth = await resolveLoginEmail(email);
+      const { data, error: signError } = await supabase.auth.signInWithPassword({
+        email: emailForAuth,
+        password,
+      });
       if (signError) {
         setError(signError.message);
         return;
@@ -54,13 +59,16 @@ export function LoginForm({ redirectAfterLogin, callbackError = null }: Props) {
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-16 text-zinc-100">
       <h1 className="text-2xl font-semibold text-white">登录</h1>
-      <p className="mt-2 text-sm text-zinc-400">使用注册邮箱与密码登录。</p>
+      <p className="mt-2 text-sm text-zinc-400">
+        使用注册邮箱与密码登录。若已配置 <code className="rounded bg-zinc-800 px-1 font-mono text-xs">ADMIN_LOGIN_EMAIL</code>
+        ，可在下方输入 <code className="rounded bg-zinc-800 px-1 font-mono text-xs">admin</code> 作为快捷账号。
+      </p>
       <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-300">邮箱</span>
+          <span className="text-zinc-300">邮箱或 admin</span>
           <input
-            type="email"
-            autoComplete="email"
+            type="text"
+            autoComplete="username"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}

@@ -1,6 +1,6 @@
 # nano-banana-pro
 
-轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每次成功仍扣 `balance_images` 1 次**；次数不足需运营人工充值。不接 Stripe，不做复杂分销后台。（`price_cny` 仍可按模型写入库备查，当前前端不展示价格。）
+轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每次成功按模型扣积分**（存于 `profiles.balance_images`，如 Fast/HD 10 分、GPT Image 20 分、Pro 系 30 分，可在 `lib/models.ts` 的 `creditsPerGeneration` 调整）；积分不足需运营在 `/admin` 或库内充值。不接 Stripe，不做复杂分销后台。（`price_cny` 仍可按模型写入库备查，当前前端不展示价格。）
 
 **完整合并文档（单文件 Markdown）**：[`docs/COMPLETE_GUIDE.md`](./docs/COMPLETE_GUIDE.md)
 
@@ -22,9 +22,9 @@
 ## 功能一览
 
 - 邮箱 **注册 / 登录**（Supabase Auth）
-- **`/generate`**：多模型卡片单选、可选测试备注、**提示词 + 可选参考图（同一栏）** → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；默认成功扣 `balance_images` 1 次（失败不扣）；**内测**见 `GENERATION_TESTING_MODE`，开启后不扣次
+- **`/generate`**：多模型卡片单选、可选测试备注、**提示词 + 可选参考图（同一栏）** → Server Action 调上游；**模型 id 与每档积分以服务端 `lib/models.ts` 为准**（`creditsPerGeneration`）；成功按模型扣积分（失败不扣）；**内测**见 `GENERATION_TESTING_MODE`，开启后不扣
 - **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、积分调整审计、充值记录
-- **`/admin`**（可选）：运营加减 `balance_images`，审计表 `admin_balance_logs`；需配置 `ADMIN_EMAILS` 与 `SUPABASE_SERVICE_ROLE_KEY`
+- **`/admin`**（可选）：加减积分、创建/删除 Auth 用户；审计 `admin_balance_logs`；需 `ADMIN_EMAILS` + `SUPABASE_SERVICE_ROLE_KEY`；登录页可用 `ADMIN_LOGIN_EMAIL` 配合输入 `admin` 快捷登录
 - **`/`**：产品介绍与入口
 - 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
 
@@ -95,7 +95,8 @@ supabase/
 | `SUPABASE_SERVICE_ROLE_KEY` | **仅服务端** | `service_role`，用于扣次、写任务、Storage 上传等；**禁止**加 `NEXT_PUBLIC_` |
 | `SUPABASE_GENERATION_BUCKET` | 仅服务端（可选） | 存生成图的桶名，默认 `generations` |
 | `GENERATION_TESTING_MODE` | 仅服务端（可选） | 设为 `1` / `true` / `yes` 时：**不校验、不扣** `balance_images`，仍写 `image_jobs` 与 Storage；顶栏与创作页显示内测文案。正式上线前关闭 |
-| `ADMIN_EMAILS` | 仅服务端（可选） | 逗号分隔管理员邮箱（小写比对）；配置后对应用户登录可见顶栏「管理」并访问 `/admin` 调分（依赖 `SUPABASE_SERVICE_ROLE_KEY`） |
+| `ADMIN_EMAILS` | 仅服务端（可选） | 逗号分隔管理员邮箱（小写比对）；配置后对应用户登录可见顶栏「管理」并访问 `/admin`（依赖 `SUPABASE_SERVICE_ROLE_KEY`） |
+| `ADMIN_LOGIN_EMAIL` | 仅服务端（可选） | 登录框输入 `admin` 时映射到的真实邮箱（须在 Supabase Auth 存在且与 `ADMIN_EMAILS` 之一一致，方可进 `/admin`） |
 
 ### Supabase 直连 Postgres（可选）
 

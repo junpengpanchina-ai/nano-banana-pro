@@ -5,7 +5,7 @@ import { adminAdjustBalanceForm, type AdminFormState } from "@/app/admin/actions
 
 function message(state: AdminFormState): string | null {
   if (!state) return null;
-  if (state.ok) return "已更新余额并写入审计。";
+  if (state.ok) return state.message ?? "已更新积分并写入审计。";
   return state.error;
 }
 
@@ -16,7 +16,7 @@ export function AdminCreditsForm() {
     <form action={formAction} className="mt-4 space-y-4 rounded-2xl border border-zinc-800 bg-[#161412] p-5">
       <div>
         <label htmlFor="admin-user-id" className="text-sm text-zinc-400">
-          用户 UUID（profiles.id）
+          用户 UUID（与 Auth 用户 id 相同）
         </label>
         <input
           id="admin-user-id"
@@ -29,7 +29,7 @@ export function AdminCreditsForm() {
       </div>
       <div>
         <label htmlFor="admin-delta" className="text-sm text-zinc-400">
-          变更张数（正数加、负数减）
+          变更积分（正数加、负数减）
         </label>
         <input
           id="admin-delta"

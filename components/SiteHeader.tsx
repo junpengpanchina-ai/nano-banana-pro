@@ -52,7 +52,7 @@ export async function SiteHeader() {
             </span>
           ) : user && balance !== null ? (
             <span className="rounded-full border border-[#FF9D3C]/40 bg-[#FF9D3C]/10 px-3 py-1 text-xs font-semibold tabular-nums text-[#FF9D3C]">
-              {balance} 次
+              {balance} 积分
             </span>
           ) : null}
           {user ? (

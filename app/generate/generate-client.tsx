@@ -14,6 +14,8 @@ export type GenerateModelOption = {
   id: string;
   label: string;
   description: string;
+  /** 成功一次生成消耗的积分 */
+  creditsPerGeneration: number;
   /** 与 `lib/models.ts` 一致；缺省则三档画质均可选 */
   allowedImageSizes?: ImageSizeOption[];
 };
@@ -186,12 +188,14 @@ export function GenerateClient({
   const promptOk =
     (!hasRefs && prompt.trim().length >= 1) || (hasRefs && prompt.trim().length >= 5);
 
+  const selectedCost = models.find((m) => m.id === modelId)?.creditsPerGeneration ?? 0;
+
   const canSubmit =
     canAct &&
     !loading &&
     !referenceUploading &&
     !!modelId &&
-    (testingMode || balance >= 1) &&
+    (testingMode || (selectedCost > 0 && balance >= selectedCost)) &&
     promptOk;
 
   return (
@@ -244,7 +248,12 @@ export function GenerateClient({
             </div>
           ) : (
             <div className="rounded-full border border-zinc-700 bg-[#161412] px-4 py-2 text-sm text-zinc-300">
-              剩余次数：<span className="font-semibold tabular-nums text-white">{balance}</span>
+              剩余积分：<span className="font-semibold tabular-nums text-white">{balance}</span>
+              {selectedCost > 0 ? (
+                <span className="ml-2 text-zinc-500">
+                  · 本次 <span className="tabular-nums text-[#FF9D3C]">{selectedCost}</span>
+                </span>
+              ) : null}
             </div>
           )}
         </header>
@@ -267,7 +276,12 @@ export function GenerateClient({
                           : "border-zinc-700 bg-[#121110] hover:border-zinc-500"
                       }`}
                     >
-                      <span className="font-semibold text-white">{m.label}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold text-white">{m.label}</span>
+                        <span className="shrink-0 rounded-md border border-[#FF9D3C]/35 bg-[#FF9D3C]/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[#FF9D3C]">
+                          {m.creditsPerGeneration} 分/次
+                        </span>
+                      </div>
                       <p className="mt-1.5 line-clamp-3 text-xs leading-snug text-zinc-500">{m.description}</p>
                     </button>
                   ))}
@@ -438,8 +452,8 @@ export function GenerateClient({
                 >
                   {loading
                     ? "生成中，请稍候（可能需几十秒）…"
-                    : !testingMode && balance < 1
-                      ? "次数不足"
+                    : !testingMode && selectedCost > 0 && balance < selectedCost
+                      ? "积分不足"
                       : !promptOk
                         ? hasRefs
                           ? "提示词至少 5 个字"

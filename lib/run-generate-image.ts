@@ -87,8 +87,12 @@ export async function runGenerateImageJob(
   }
 
   const testing = isGenerationTestingMode();
-  if (!testing && profile.balance_images < 1) {
-    return { ok: false, error: "次数不足，请联系运营充值" };
+  const creditCost = selected.creditsPerGeneration;
+  if (!testing && profile.balance_images < creditCost) {
+    return {
+      ok: false,
+      error: `积分不足（本模型需 ${creditCost} 积分，当前 ${profile.balance_images}）`,
+    };
   }
 
   const { data: job, error: insertError } = await admin
@@ -143,6 +147,7 @@ export async function runGenerateImageJob(
       image_url: finalUrl,
       storage_path: persisted.ok ? persisted.storagePath : null,
       upstream_request_id: upstream.upstreamRequestId ?? null,
+      credits_charged: creditCost,
     })
     .eq("id", jobId);
 
@@ -160,7 +165,7 @@ export async function runGenerateImageJob(
     };
   }
 
-  const newBalance = profile.balance_images - 1;
+  const newBalance = profile.balance_images - creditCost;
   const { error: balanceError } = await admin
     .from("profiles")
     .update({ balance_images: newBalance })
@@ -169,7 +174,7 @@ export async function runGenerateImageJob(
   if (balanceError) {
     return {
       ok: false,
-      error: "图片已保存但扣次失败，请联系管理员。",
+      error: "图片已保存但扣积分失败，请联系管理员。",
       jobId,
     };
   }

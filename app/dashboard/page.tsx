@@ -54,14 +54,14 @@ export default async function DashboardPage() {
       <p className="mt-1 text-sm text-zinc-400">
         {testingMode ? (
           <>
-            内测阶段不扣次数；生成记录与测试备注照常保存。已落 Storage 的图片每次打开本页会重新签发{" "}
+            内测阶段不扣积分；生成记录与测试备注照常保存。已落 Storage 的图片每次打开本页会重新签发{" "}
             <span className="font-medium text-[#FF9D3C]">48 小时</span> 有效链接。
           </>
         ) : (
           <>
-            剩余次数、生成记录与测试备注。已落 Storage 的图片每次打开本页会重新签发{" "}
+            剩余积分、生成记录与测试备注。已落 Storage 的图片每次打开本页会重新签发{" "}
             <span className="font-medium text-[#FF9D3C]">48 小时</span>{" "}
-            有效链接。充值与后台加减张数会显示在下方表格（数据来自 Supabase）。
+            有效链接。充值与后台加减积分会显示在下方表格（数据来自 Supabase）。
           </>
         )}
       </p>
@@ -72,11 +72,11 @@ export default async function DashboardPage() {
             <>
               <p className="text-sm text-zinc-400">余额（内测不扣）</p>
               <p className="mt-2 text-lg font-semibold text-[#FF9D3C]">不限次数</p>
-              <p className="mt-1 text-xs text-zinc-500">库内 balance_images 仍为 {profile?.balance_images ?? 0}，上线计费后可启用扣次。</p>
+              <p className="mt-1 text-xs text-zinc-500">库内积分字段 balance_images 仍为 {profile?.balance_images ?? 0}。</p>
             </>
           ) : (
             <>
-              <p className="text-sm text-zinc-400">剩余可生成张数</p>
+              <p className="text-sm text-zinc-400">剩余积分</p>
               <p className="mt-2 text-3xl font-semibold tabular-nums text-white">{profile?.balance_images ?? 0}</p>
             </>
           )}
@@ -177,14 +177,14 @@ export default async function DashboardPage() {
 
       <section className="mt-12">
         <h2 className="text-lg font-medium text-white">积分调整记录</h2>
-        <p className="mt-1 text-sm text-zinc-500">运营后台加减张数的审计；与 profiles 余额一致。</p>
+        <p className="mt-1 text-sm text-zinc-500">运营后台加减积分的审计；与 profiles 余额一致。</p>
         <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-800">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#121110] text-zinc-400">
               <tr>
                 <th className="px-3 py-2 font-medium">时间</th>
-                <th className="px-3 py-2 font-medium">变更</th>
-                <th className="px-3 py-2 font-medium">之后余额</th>
+                <th className="px-3 py-2 font-medium">变更积分</th>
+                <th className="px-3 py-2 font-medium">之后积分</th>
                 <th className="px-3 py-2 font-medium">操作者</th>
                 <th className="px-3 py-2 font-medium">备注</th>
               </tr>
@@ -227,14 +227,14 @@ export default async function DashboardPage() {
 
       <section className="mt-12">
         <h2 className="text-lg font-medium text-white">充值记录</h2>
-        <p className="mt-1 text-sm text-zinc-500">含运营后台加张（payment_method 为 admin）及人工录入。</p>
+        <p className="mt-1 text-sm text-zinc-500">含运营后台加积分（payment_method 为 admin）及人工录入。</p>
         <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-800">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#121110] text-zinc-400">
               <tr>
                 <th className="px-3 py-2 font-medium">时间</th>
                 <th className="px-3 py-2 font-medium">金额</th>
-                <th className="px-3 py-2 font-medium">加张数</th>
+                <th className="px-3 py-2 font-medium">加积分</th>
                 <th className="px-3 py-2 font-medium">方式</th>
                 <th className="px-3 py-2 font-medium">备注</th>
               </tr>

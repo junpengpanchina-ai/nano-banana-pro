@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const err = result.error;
     let status = 400;
     if (err.includes("请先登录")) status = 401;
-    else if (err.includes("次数不足")) status = 402;
+    else if (err.includes("次数不足") || err.includes("积分不足")) status = 402;
     else if (err.includes("管理员")) status = 500;
     return NextResponse.json(result, { status });
   }

@@ -23,6 +23,7 @@ export default async function GeneratePage() {
     id: m.id,
     label: m.label,
     description: m.description,
+    creditsPerGeneration: m.creditsPerGeneration,
     allowedImageSizes: m.allowedImageSizes ? [...m.allowedImageSizes] : undefined,
   }));
 
