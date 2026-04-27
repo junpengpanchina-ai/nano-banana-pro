@@ -12,7 +12,7 @@
 | 语言 | TypeScript |
 | 样式 | Tailwind CSS 4 |
 | 认证与数据库 | Supabase（Auth + Postgres + RLS） |
-| 部署 | Vercel（推荐） |
+| 部署 | Vercel（推荐）或自有 Linux（见下文 **部署到 VPS**） |
 
 ---
 
@@ -309,6 +309,35 @@ npm run dev
 - **网络与地区（手机常见）**：若系统诊断显示「浏览器 / 网络正常，但网站连不上」（到 `*.vercel.app` 一段红叉），多半是 **当前运营商或地区对 Vercel 默认子域访问不稳定或被干扰**，与仓库代码、Vercel 控制台「是否部署成功」可以并存。处理思路：**绑定自定义域名**（域名 DNS 指到 Vercel 后，用 `https://你的域名` 访问）；或换 Wi‑Fi / 其他运营商试；请境外网络的朋友打开同一 `*.vercel.app` 链接，若境外可开、境内不可开，即可确认是链路问题而非应用未发布。
 
 **超时**：生成页路由配置了 `maxDuration = 120`（秒）；Vercel 不同套餐对 Serverless 上限不同，若经常超时需升级套餐或改为异步任务架构。
+
+---
+
+## 部署到自有 VPS（Linux）
+
+仓库已开启 **`output: "standalone"`**（`next.config.ts`），适合在单台机器上用 **Node 直接跑**，无需整份 `node_modules` 上机。
+
+### 机器与资源（以 1 vCPU / 1 GB RAM / 20 GB 盘为例）
+
+- **内存**：在本机执行 `npm run build` 时 Next 编译较吃内存，**1 GB 容易 OOM**。建议二选一：  
+  - **加 Swap**（例如 2 GB）后再构建；或  
+  - 在 **本机 / CI（GitHub Actions）** 上 `npm ci && npm run build`，只把产物 **`/.next/standalone`**、**`/.next/static`**、**`/public`** 同步到 VPS（见下「最小目录」）。  
+- **磁盘**：镜像与长期文件主要在 **Supabase Storage**，VPS 20 GB 一般够用；留意系统日志与 `journal` 体积。  
+- **网络**：建议绑定 **域名** 并上 HTTPS（Let’s Encrypt）；Supabase 的 **Site URL / Redirect URLs** 填 `https://你的域名` 与 `https://你的域名/auth/callback`（勿写裸 IP，证书与 Auth 回调都麻烦）。
+
+### 在 VPS 上运行（构建已在机器上完成时）
+
+1. 安装 **Node.js 20 LTS**（或 22），开放防火墙 **80 / 443**（及 SSH **22**）。  
+2. 将环境变量写入 **`/etc/nano-banana.env`**（或其它路径），权限收紧，内容与 `.env.example` 一致（含 `NEXT_PUBLIC_*`、`SUPABASE_SERVICE_ROLE_KEY`、上游等）。  
+3. 部署目录中除 **`standalone` 入口** 外，需复制 Next 文档要求的两项（相对仓库根）：  
+   - `cp -r public .next/standalone/`  
+   - `mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/`  
+4. 进程示例：`cd .next/standalone && HOSTNAME=0.0.0.0 PORT=3000 node server.js`（生产请用 **systemd** 或 **pm2** 保活、开机自启）。  
+5. 前面反代 **Caddy** 或 **Nginx**：对外 443 → `127.0.0.1:3000`，自动 TLS；不要把 `3000` 直接暴露公网若可避免。
+
+### 与 Vercel 的差异
+
+- **无** Vercel 的 Serverless 时间上限；生成长任务仍受上游与单进程稳定性影响。  
+- **HTTPS、备份、监控、系统更新** 由你自行维护。
 
 ---
 
