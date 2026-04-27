@@ -13,6 +13,7 @@
 | 样式 | Tailwind CSS 4 |
 | 认证与数据库 | Supabase（Auth + Postgres + RLS） |
 | 部署 | Vercel（推荐）或自有 Linux（见下文 **部署到 VPS**） |
+| 架构演进（计划） | [Vercel 前端 + DMIT API + Supabase](./docs/ARCHITECTURE_PLAN_VERCEL_DMIT.md) |
 
 ---
 
