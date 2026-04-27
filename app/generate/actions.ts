@@ -12,13 +12,11 @@ export async function submitGenerateImage(
   testNote?: string | null,
   aspectRatio?: string | null,
   imageSize?: string | null,
-  generationMode?: "text" | "image" | null,
   referenceImageUrls?: string[] | null,
 ): Promise<GenerateImageResult> {
   return runGenerateImageJob(prompt, modelId, testNote, {
     aspectRatio,
     imageSize,
-    generationMode: generationMode ?? "text",
     referenceImageUrls: referenceImageUrls ?? undefined,
   });
 }

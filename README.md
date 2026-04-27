@@ -22,7 +22,7 @@
 ## 功能一览
 
 - 邮箱 **注册 / 登录**（Supabase Auth）
-- **`/generate`**：多模型卡片单选、可选测试备注、提示词 → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；默认成功扣 `balance_images` 1 次（失败不扣）；**内测**见环境变量 `GENERATION_TESTING_MODE`，开启后不扣次
+- **`/generate`**：多模型卡片单选、可选测试备注、**提示词 + 可选参考图（同一栏）** → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；默认成功扣 `balance_images` 1 次（失败不扣）；**内测**见 `GENERATION_TESTING_MODE`，开启后不扣次
 - **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、充值记录
 - **`/`**：产品介绍与入口
 - 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
@@ -148,7 +148,7 @@ supabase/
 | 方法 | 路径 | 作用 |
 |------|------|------|
 | `POST` | `/api/prompt` | **提示词端口**：仅校验长度与敏感词，不写库、不扣次、不调上游。Body：`{ "prompt": string }`，返回 `{ ok, prompt? \| error? }`。 |
-| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?", "generationMode?", "referenceImageUrls?" }`；`generationMode` 为 `"text"`（默认）或 `"image"`；图生图时提示词至少 5 字，`referenceImageUrls` 为可选的当前用户参考图签名 URL 数组（与页面「本地上传」一致，服务端会校验域名与路径）。宽高比、画质由服务端白名单解析，见 `lib/generation-draw-params.ts`。 |
+| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?", "referenceImageUrls?" }`；`referenceImageUrls` 可选；**有参考图时**提示词至少 5 字，否则至少 1 字；参考图 URL 须为当前用户签名链（服务端校验）。宽高比、画质见 `lib/generation-draw-params.ts`。 |
 | `GET` | `/api/image/signed?jobId=<uuid>` | 为本人任务重新签发图片 URL：若存在 `storage_path` 则返回 **48h** 签名地址；否则返回已存的 `image_url`。 |
 
 网页 `/generate` 仍默认走 **Server Action**，不强制改用上述 REST。
@@ -243,7 +243,7 @@ where id = '<user-uuid>';
 |------|------|
 | `/` | 产品介绍；未登录显示注册/登录；已登录显示次数或「内测 · 不限」（取决于 `GENERATION_TESTING_MODE`） |
 | `/login`、`/signup` | 邮箱 + 密码 |
-| `/generate` | **未登录也可浏览**双栏与示例预览；登录后生成。左栏模型 / 画质(1K–4K) / 宽高比 / 提示词 / 备注；右栏结果；`/login?next=/generate` 登录后回到本页 |
+| `/generate` | **未登录也可浏览**双栏与示例预览；登录后生成。左栏模型 / 画质(1K–4K) / 宽高比 / **提示词与参考图** / 备注；右栏结果；`/login?next=/generate` 登录后回到本页 |
 | `/dashboard` | 需登录；余额或内测说明、账号信息、生成记录表（含 `model_label` / `model` / `test_note` 编辑）、充值记录表 |
 
 视觉：见 [`STYLE.md`](./STYLE.md)（深色 `#0F0E0C`、主色 `#FF9D3C`）。
@@ -257,6 +257,7 @@ where id = '<user-uuid>';
 - 先插入 `image_jobs` 为 `pending`（写入 `model`、`model_label`、`price_cny`、`test_note`、`aspect_ratio`、`image_size`），再调上游（请求体含 `aspectRatio`、`imageSize`）；**成功**则更新为 `succeeded` 并写入 `image_url`；**失败**则 `failed` 并写 `error_message`，**不扣次**。
 - **非内测**且成功时 **`balance_images -= 1`**；**内测模式**（`GENERATION_TESTING_MODE=1`）成功时**不扣次**，`profiles` 与 `auth.users` 仍关联每条 `image_jobs`。
 - **`price_cny` 与模型 id 仅由服务端 `getImageModel(modelId)` 决定**（不信任前端传价；界面可不展示）。
+- **创作页**：文/图合一；无参考图时提示词至少 1 字，**有参考图**时至少 5 字；参考图最多 10 张。
 
 ---
 

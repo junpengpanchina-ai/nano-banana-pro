@@ -19,12 +19,8 @@ export type ImageModelConfig = {
 };
 
 /**
- * 可选模型列表（不含 gpt-image-2）。
- * 服务端仅接受此表内的 `id`；`submitGenerateImage` 与绘图请求均以此为准。
- */
-/**
  * 上游 `id` 须与供应商文档一致；仅改 `label`/`description`/`enabled` 不影响对接。
- * 内测首轮只开放 4 个：`pro-vt` 先关，避免选项过多稀释反馈；第二轮再 `enabled: true`。
+ * `nano-banana-pro-vt` 默认关闭；`gpt-image-2` 以供应商实际 model 字符串为准（不一致请改 `id`）。
  */
 export const IMAGE_MODELS: ImageModelConfig[] = [
   {
@@ -61,6 +57,13 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     label: "Nana Portrait",
     description: "高细节向：人像、写真、五官与肢体（复杂场景与精修）。",
     priceCny: 6,
+    enabled: true,
+  },
+  {
+    id: "gpt-image-2",
+    label: "GPT Image 2",
+    description: "OpenAI GPT Image 线路（上游需支持该 model id）；可与香蕉系对比。",
+    priceCny: 2,
     enabled: true,
   },
 ];

@@ -165,7 +165,7 @@ flowchart TB
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/prompt` | 提示词校验；Body `{ "prompt" }` |
-| `POST` | `/api/image/generate` | 与 Server Action 同逻辑；需登录（或内测免登录配置）；Body 含 `prompt`、`modelId`、`testNote?`、`aspectRatio?`、`imageSize?`、`generationMode?`、`referenceImageUrls?` |
+| `POST` | `/api/image/generate` | 与 Server Action 同逻辑；Body 含 `prompt`、`modelId`、`testNote?`、`aspectRatio?`、`imageSize?`、`referenceImageUrls?`（可选；有参考图时提示词至少 5 字） |
 | `GET` | `/api/image/signed?jobId=` | 为本人任务重签 48h 图片 URL |
 
 页面 `/generate` 默认走 **Server Action**。
@@ -233,7 +233,7 @@ flowchart TB
 - 非内测且 `balance_images < 1` 拒绝生成。  
 - 先插 `image_jobs` `pending`，再调上游；成功写图与 `succeeded`；失败 `failed` **不扣次**；非内测成功 **扣 1**。  
 - 模型与 `price_cny` 仅信任服务端 `getImageModel(modelId)`。  
-- **图生图**：提示词至少 5 字；参考图可选；参考图 URL 经服务端白名单校验。
+- **生成页**：提示词 + 可选参考图同一界面；有参考图时提示词至少 5 字，否则至少 1 字；参考图 URL 经服务端白名单校验。
 
 ---
 

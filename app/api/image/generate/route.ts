@@ -25,7 +25,6 @@ export async function POST(request: Request) {
     testNote?: unknown;
     aspectRatio?: unknown;
     imageSize?: unknown;
-    generationMode?: unknown;
     referenceImageUrls?: unknown;
   };
   try {
@@ -44,8 +43,6 @@ export async function POST(request: Request) {
         : null;
   const aspectRatio = typeof body.aspectRatio === "string" ? body.aspectRatio : null;
   const imageSize = typeof body.imageSize === "string" ? body.imageSize : null;
-  const generationMode =
-    body.generationMode === "image" || body.generationMode === "text" ? body.generationMode : "text";
   const referenceImageUrls = Array.isArray(body.referenceImageUrls)
     ? body.referenceImageUrls.filter((x): x is string => typeof x === "string")
     : undefined;
@@ -53,7 +50,6 @@ export async function POST(request: Request) {
   const result = await runGenerateImageJob(prompt, modelId, testNote, {
     aspectRatio,
     imageSize,
-    generationMode,
     referenceImageUrls,
   });
 

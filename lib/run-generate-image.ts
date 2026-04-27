@@ -21,7 +21,6 @@ export type GenerateImageResult =
 export type RunGenerateDrawInput = {
   aspectRatio?: string | null;
   imageSize?: string | null;
-  generationMode?: "text" | "image";
   referenceImageUrls?: string[] | null;
 };
 
@@ -34,15 +33,6 @@ export async function runGenerateImageJob(
   if (getEnabledImageModels().length === 0) {
     return { ok: false, error: "暂无可用模型，请联系管理员。" };
   }
-
-  const generationModeEarly = drawInput?.generationMode === "image" ? "image" : "text";
-  const validated = validatePromptInput(promptRaw, {
-    minLength: generationModeEarly === "image" ? 5 : 1,
-  });
-  if (!validated.ok) {
-    return { ok: false, error: validated.error };
-  }
-  const prompt = validated.prompt;
 
   const modelId = modelIdRaw.trim();
   const selected = getImageModel(modelId);
@@ -70,6 +60,14 @@ export async function runGenerateImageJob(
   }
 
   const refUrls = sanitizeReferenceImageUrls(drawInput?.referenceImageUrls ?? [], actingUserId, 10);
+
+  const validated = validatePromptInput(promptRaw, {
+    minLength: refUrls.length > 0 ? 5 : 1,
+  });
+  if (!validated.ok) {
+    return { ok: false, error: validated.error };
+  }
+  const prompt = validated.prompt;
 
   const admin = createAdminClient();
 
