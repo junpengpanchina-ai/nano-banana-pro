@@ -14,7 +14,7 @@ type Props = {
   redirectAfterSignup?: string;
 };
 
-type SignupPhase = "form" | "success_session" | "success_confirm_email";
+type SignupPhase = "form" | "success_confirm_email";
 
 export function SignupForm({
   generationTestingMode,
@@ -32,54 +32,37 @@ export function SignupForm({
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const supabase = createClient();
-    const { data, error: signError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName || undefined },
-      },
-    });
-    setLoading(false);
-    if (signError) {
-      setError(signError.message);
-      return;
+    try {
+      const supabase = createClient();
+      const callbackNext = encodeURIComponent(redirectAfterSignup);
+      const emailRedirectTo = `${window.location.origin}/auth/callback?next=${callbackNext}`;
+      const { data, error: signError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { display_name: displayName || undefined },
+          emailRedirectTo,
+        },
+      });
+      if (signError) {
+        setError(signError.message);
+        return;
+      }
+      if (data.session) {
+        router.refresh();
+        window.location.assign(redirectAfterSignup);
+        return;
+      }
+      if (data.user) {
+        setPhase("success_confirm_email");
+        return;
+      }
+      setError("注册未返回用户信息，请稍后重试或联系管理员。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "网络异常，请稍后重试。");
+    } finally {
+      setLoading(false);
     }
-    if (data.session) {
-      setPhase("success_session");
-      router.refresh();
-      window.setTimeout(() => {
-        router.push(redirectAfterSignup);
-      }, 900);
-      return;
-    }
-    if (data.user) {
-      setPhase("success_confirm_email");
-      return;
-    }
-    setError("注册未返回用户信息，请稍后重试或联系管理员。");
-  }
-
-  if (phase === "success_session") {
-    return (
-      <main className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4 py-16 text-zinc-100">
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-2xl border border-[#FF9D3C]/40 bg-[#FF9D3C]/10 px-6 py-8 text-center"
-        >
-          <p className="text-xl font-semibold text-white">注册成功</p>
-          <p className="mt-3 text-sm text-zinc-300">已为你登录，正在进入创作页…</p>
-          <p className="mt-6 text-xs text-zinc-500">若页面未自动跳转，请点击下方按钮。</p>
-          <Link
-            href={redirectAfterSignup}
-            className="mt-4 inline-flex rounded-full bg-[#FF9D3C] px-6 py-2.5 text-sm font-semibold text-[#0F0E0C] transition hover:bg-[#ffb05a]"
-          >
-            进入创作
-          </Link>
-        </div>
-      </main>
-    );
   }
 
   if (phase === "success_confirm_email") {
@@ -96,12 +79,17 @@ export function SignupForm({
             ，请打开邮箱{" "}
             <span className="font-mono text-zinc-200">{email}</span> 中的链接完成验证，然后再登录。
           </p>
-          <Link
-            href={`/login?next=${encodeURIComponent(redirectAfterSignup)}`}
-            className="mt-6 inline-flex rounded-full bg-[#FF9D3C] px-6 py-2.5 text-sm font-semibold text-[#0F0E0C] transition hover:bg-[#ffb05a]"
-          >
-            去登录
-          </Link>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href={`/login?next=${encodeURIComponent(redirectAfterSignup)}`}
+              className="inline-flex rounded-full bg-[#FF9D3C] px-6 py-2.5 text-sm font-semibold text-[#0F0E0C] transition hover:bg-[#ffb05a]"
+            >
+              去登录
+            </Link>
+            <Link href="/" className="text-sm font-medium text-zinc-400 underline-offset-2 hover:text-white hover:underline">
+              返回首页
+            </Link>
+          </div>
         </div>
       </main>
     );

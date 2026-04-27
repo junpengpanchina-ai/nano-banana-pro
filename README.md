@@ -299,7 +299,7 @@ npm run dev
 
 1. 将仓库连接 Vercel，Framework Preset 选 **Next.js**。  
 2. 在 Vercel **Settings → Environment Variables** 填入上述 **全部必配环境变量**（含 `SUPABASE_SERVICE_ROLE_KEY` 与上游变量），并确认对 **Production** 勾选生效（仅填在 Development 时线上拿不到变量）。保存后 **Redeploy** 一次。  
-3. 在 **Supabase Dashboard → Authentication → URL Configuration**：把 **Site URL** 设为生产地址（如 `https://你的项目.vercel.app`），**Redirect URLs** 中加入同一域名（及自定义域），否则他机登录/回调会失败。  
+3. 在 **Supabase Dashboard → Authentication → URL Configuration**：把 **Site URL** 设为生产地址（如 `https://你的项目.vercel.app`）。**Redirect URLs** 中须包含站点根与邮箱验证回调，例如：`https://你的域名/**`、`https://你的域名/auth/callback`（与代码中 `app/auth/callback/route.ts` 一致），否则登录无会话、邮箱验证后无法回站。  
 4. 部署完成后，在 Supabase 中为生产环境执行迁移（若尚未执行）。  
 
 **别人打不开 / 只能本机打开**

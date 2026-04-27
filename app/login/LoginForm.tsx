@@ -10,28 +10,40 @@ const input =
 
 type Props = {
   redirectAfterLogin: string;
+  /** 从 /auth/callback 重定向带回的错误说明 */
+  callbackError?: string | null;
 };
 
-export function LoginForm({ redirectAfterLogin }: Props) {
+export function LoginForm({ redirectAfterLogin, callbackError = null }: Props) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(callbackError ?? null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (signError) {
-      setError(signError.message);
-      return;
+    try {
+      const supabase = createClient();
+      const { data, error: signError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signError) {
+        setError(signError.message);
+        return;
+      }
+      if (!data.session) {
+        setError("未拿到登录会话：若项目开启了邮箱验证，请先点击邮件里的链接再登录。");
+        return;
+      }
+      // 整页跳转，确保 Cookie 被带上；仅用 router.push 时服务端有时仍读不到新会话
+      router.refresh();
+      window.location.assign(redirectAfterLogin);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "网络异常，请稍后重试。");
+    } finally {
+      setLoading(false);
     }
-    router.refresh();
-    router.push(redirectAfterLogin);
   }
 
   const signupHref =
