@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { resolveLoginEmail } from "@/app/login/actions";
+import { resolveLoginIdentifier } from "@/app/login/actions";
 
 const input =
   "rounded-xl border border-zinc-700 bg-[#121110] px-3 py-2 text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#FF9D3C]/60 focus:ring-1 focus:ring-[#FF9D3C]/40";
@@ -16,7 +15,6 @@ type Props = {
 };
 
 export function LoginForm({ redirectAfterLogin, callbackError = null }: Props) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(callbackError ?? null);
@@ -27,22 +25,29 @@ export function LoginForm({ redirectAfterLogin, callbackError = null }: Props) {
     setError(null);
     setLoading(true);
     try {
+      const resolved = await resolveLoginIdentifier(email);
+      if (!resolved.ok) {
+        setError(resolved.error);
+        return;
+      }
       const supabase = createClient();
-      const emailForAuth = await resolveLoginEmail(email);
       const { data, error: signError } = await supabase.auth.signInWithPassword({
-        email: emailForAuth,
+        email: resolved.email,
         password,
       });
       if (signError) {
-        setError(signError.message);
+        const raw = signError.message;
+        setError(
+          raw === "Invalid login credentials"
+            ? "邮箱或密码不正确。若使用 admin：请确认已配置 ADMIN_LOGIN_EMAIL、该邮箱在 Supabase Auth 中已注册且密码一致；进管理后台还需把同一邮箱写入 ADMIN_EMAILS。"
+            : raw,
+        );
         return;
       }
       if (!data.session) {
         setError("未拿到登录会话：若项目开启了邮箱验证，请先点击邮件里的链接再登录。");
         return;
       }
-      // 整页跳转，确保 Cookie 被带上；仅用 router.push 时服务端有时仍读不到新会话
-      router.refresh();
       window.location.assign(redirectAfterLogin);
     } catch (err) {
       setError(err instanceof Error ? err.message : "网络异常，请稍后重试。");

@@ -1,15 +1,33 @@
 "use server";
 
+export type ResolveLoginResult =
+  | { ok: true; email: string }
+  | { ok: false; error: string };
+
 /**
- * 登录框可输入「admin」作为快捷账号：映射到环境变量中的真实邮箱（须在 Supabase Auth 注册且密码一致）。
- * 配置 `ADMIN_LOGIN_EMAIL=you@domain.com`，并在 `ADMIN_EMAILS` 中包含同一邮箱以访问 /admin。
+ * 解析登录框输入：支持完整邮箱，或输入 `admin`（须配置 ADMIN_LOGIN_EMAIL 映射到 Supabase 已注册邮箱）。
  */
-export async function resolveLoginEmail(identifier: string): Promise<string> {
+export async function resolveLoginIdentifier(identifier: string): Promise<ResolveLoginResult> {
   const t = identifier.trim();
-  if (!t) return t;
+  if (!t) {
+    return { ok: false, error: "请输入邮箱或 admin" };
+  }
   if (t.toLowerCase() === "admin") {
     const mapped = process.env.ADMIN_LOGIN_EMAIL?.trim() ?? "";
-    if (mapped.includes("@")) return mapped;
+    if (!mapped.includes("@")) {
+      return {
+        ok: false,
+        error:
+          "未配置 ADMIN_LOGIN_EMAIL，无法使用 admin 登录。请在部署环境（如 Vercel）设置该变量为已在 Supabase Auth 注册的真实邮箱；或不要输入 admin，直接使用完整邮箱登录。",
+      };
+    }
+    return { ok: true, email: mapped.trim().toLowerCase() };
   }
-  return t;
+  if (!t.includes("@")) {
+    return {
+      ok: false,
+      error: "请输入包含 @ 的邮箱，或使用 admin（需已配置 ADMIN_LOGIN_EMAIL）。",
+    };
+  }
+  return { ok: true, email: t.toLowerCase() };
 }
