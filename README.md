@@ -23,7 +23,8 @@
 
 - 邮箱 **注册 / 登录**（Supabase Auth）
 - **`/generate`**：多模型卡片单选、可选测试备注、**提示词 + 可选参考图（同一栏）** → Server Action 调上游；**价格与模型 id 以服务端 `lib/models.ts` 为准**；默认成功扣 `balance_images` 1 次（失败不扣）；**内测**见 `GENERATION_TESTING_MODE`，开启后不扣次
-- **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、充值记录
+- **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、积分调整审计、充值记录
+- **`/admin`**（可选）：运营加减 `balance_images`，审计表 `admin_balance_logs`；需配置 `ADMIN_EMAILS` 与 `SUPABASE_SERVICE_ROLE_KEY`
 - **`/`**：产品介绍与入口
 - 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
 
@@ -48,6 +49,10 @@ app/
     page.tsx               # 生成页（服务端鉴权 + maxDuration）
     generate-client.tsx    # 表单与结果展示（客户端）
     actions.ts             # Server Action：submitGenerateImage
+  admin/
+    layout.tsx             # 仅 ADMIN_EMAILS 可访问
+    page.tsx               # 用户列表、全局审计、调分表单
+    actions.ts             # Server Action：调 balance + 写审计
   dashboard/
     page.tsx               # 记录与余额
     actions.ts             # 更新 test_note
@@ -55,6 +60,7 @@ components/
   SiteHeader.tsx
   LogoutButton.tsx
   dashboard/TestNoteCell.tsx
+  admin/AdminCreditsForm.tsx   # 调分表单（客户端）
 lib/
   models.ts                # 模型 id 白名单与可选画质档位（allowedImageSizes）
   api/prompt/route.ts      # POST 提示词校验
@@ -89,6 +95,7 @@ supabase/
 | `SUPABASE_SERVICE_ROLE_KEY` | **仅服务端** | `service_role`，用于扣次、写任务、Storage 上传等；**禁止**加 `NEXT_PUBLIC_` |
 | `SUPABASE_GENERATION_BUCKET` | 仅服务端（可选） | 存生成图的桶名，默认 `generations` |
 | `GENERATION_TESTING_MODE` | 仅服务端（可选） | 设为 `1` / `true` / `yes` 时：**不校验、不扣** `balance_images`，仍写 `image_jobs` 与 Storage；顶栏与创作页显示内测文案。正式上线前关闭 |
+| `ADMIN_EMAILS` | 仅服务端（可选） | 逗号分隔管理员邮箱（小写比对）；配置后对应用户登录可见顶栏「管理」并访问 `/admin` 调分（依赖 `SUPABASE_SERVICE_ROLE_KEY`） |
 
 ### Supabase 直连 Postgres（可选）
 

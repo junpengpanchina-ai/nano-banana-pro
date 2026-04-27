@@ -41,6 +41,13 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false })
     .limit(20);
 
+  const { data: balanceLogs } = await supabase
+    .from("admin_balance_logs")
+    .select("id, delta_images, balance_after, note, operator_email, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 text-zinc-100">
       <h1 className="text-2xl font-semibold text-white">我的记录</h1>
@@ -53,7 +60,8 @@ export default async function DashboardPage() {
         ) : (
           <>
             剩余次数、生成记录与测试备注。已落 Storage 的图片每次打开本页会重新签发{" "}
-            <span className="font-medium text-[#FF9D3C]">48 小时</span> 有效链接。充值由运营在 Supabase 人工录入。
+            <span className="font-medium text-[#FF9D3C]">48 小时</span>{" "}
+            有效链接。充值与后台加减张数会显示在下方表格（数据来自 Supabase）。
           </>
         )}
       </p>
@@ -168,8 +176,58 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-12">
+        <h2 className="text-lg font-medium text-white">积分调整记录</h2>
+        <p className="mt-1 text-sm text-zinc-500">运营后台加减张数的审计；与 profiles 余额一致。</p>
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-800">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[#121110] text-zinc-400">
+              <tr>
+                <th className="px-3 py-2 font-medium">时间</th>
+                <th className="px-3 py-2 font-medium">变更</th>
+                <th className="px-3 py-2 font-medium">之后余额</th>
+                <th className="px-3 py-2 font-medium">操作者</th>
+                <th className="px-3 py-2 font-medium">备注</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800">
+              {(balanceLogs ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                    暂无调整记录
+                  </td>
+                </tr>
+              ) : (
+                balanceLogs!.map((r) => (
+                  <tr key={r.id} className="bg-[#0F0E0C]">
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-400">
+                      {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
+                    </td>
+                    <td
+                      className={`px-3 py-2 tabular-nums font-medium ${
+                        (r.delta_images as number) > 0 ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {(r.delta_images as number) > 0 ? "+" : ""}
+                      {r.delta_images}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-zinc-200">{r.balance_after}</td>
+                    <td className="max-w-[160px] truncate px-3 py-2 text-zinc-300" title={r.operator_email}>
+                      {r.operator_email}
+                    </td>
+                    <td className="max-w-xs truncate px-3 py-2 text-zinc-400" title={r.note ?? ""}>
+                      {r.note ?? "—"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-12">
         <h2 className="text-lg font-medium text-white">充值记录</h2>
-        <p className="mt-1 text-sm text-zinc-500">由运营在数据库中登记后显示。</p>
+        <p className="mt-1 text-sm text-zinc-500">含运营后台加张（payment_method 为 admin）及人工录入。</p>
         <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-800">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#121110] text-zinc-400">
