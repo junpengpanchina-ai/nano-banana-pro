@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SiteHeader } from "@/components/SiteHeader";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import "./globals.css";
 
@@ -40,8 +39,7 @@ export default function RootLayout({
             )}
           </div>
         ) : null}
-        <SiteHeader />
-        <div className="flex-1">{children}</div>
+        {children}
       </body>
     </html>
   );

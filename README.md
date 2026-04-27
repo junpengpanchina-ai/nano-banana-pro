@@ -41,21 +41,15 @@
 ```text
 STYLE.md                   # 样式与交互规范（设计 Token）
 app/
-  page.tsx                 # 首页
-  layout.tsx               # 根布局 + 顶栏
-  login/                   # 登录
-  signup/                  # 注册
-  generate/
-    page.tsx               # 生成页（服务端鉴权 + maxDuration）
-    generate-client.tsx    # 表单与结果展示（客户端）
-    actions.ts             # Server Action：submitGenerateImage
+  layout.tsx               # 根布局（无顶栏）；Supabase 未配置提示条
+  (site)/                  # 用户向：layout 内含 SiteHeader
+    page.tsx               # 首页
+    login/ signup/ generate/ dashboard/
   admin/
-    layout.tsx             # 仅 ADMIN_EMAILS 可访问
-    page.tsx               # 用户列表、全局审计、调分表单
-    actions.ts             # Server Action：调 balance + 写审计
-  dashboard/
-    page.tsx               # 记录与余额
-    actions.ts             # 更新 test_note
+    layout.tsx             # ADMIN_EMAILS + 独立 AdminShell 侧栏
+    page.tsx               # 总览仪表盘
+    users/ credits/ pricing/ audit/   # 分模块子页
+    actions.ts             # Server Action：用户/积分/审计
 components/
   SiteHeader.tsx
   LogoutButton.tsx

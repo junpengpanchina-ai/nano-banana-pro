@@ -91,6 +91,9 @@ export async function adminAdjustBalance(
   }
 
   revalidatePath("/admin");
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/credits");
+  revalidatePath("/admin/audit");
   revalidatePath("/dashboard");
   return { ok: true };
 }
@@ -146,6 +149,7 @@ export async function adminCreateUserForm(_prev: AdminFormState, formData: FormD
   }
 
   revalidatePath("/admin");
+  revalidatePath("/admin/users");
   return {
     ok: true,
     message: `已创建用户，UUID：${data.user.id}（请提醒对方用该邮箱登录）`,
@@ -183,5 +187,6 @@ export async function adminDeleteUserForm(_prev: AdminFormState, formData: FormD
   }
 
   revalidatePath("/admin");
+  revalidatePath("/admin/users");
   return { ok: true, message: "已从 Auth 删除该用户及其关联数据。" };
 }

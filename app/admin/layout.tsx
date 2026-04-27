@@ -1,6 +1,13 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/admin-auth";
+import { AdminShell } from "@/components/admin/AdminShell";
+
+export const metadata: Metadata = {
+  title: "管理控制台 · Nana Image Lab",
+  robots: { index: false, follow: false },
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -10,8 +17,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!user) {
     redirect("/login?next=/admin");
   }
-  if (!isAdminEmail(user.email)) {
+  const email = user.email;
+  if (!email || !isAdminEmail(email)) {
     redirect("/dashboard");
   }
-  return <div className="min-h-screen bg-[#0F0E0C] text-zinc-100">{children}</div>;
+  return <AdminShell operatorEmail={email}>{children}</AdminShell>;
 }

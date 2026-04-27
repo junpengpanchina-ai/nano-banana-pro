@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
@@ -19,7 +20,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@/app/generate/*": ["app/(site)/generate/*"],
+      "@/app/login/*": ["app/(site)/login/*"],
+      "@/app/signup/*": ["app/(site)/signup/*"],
+      "@/app/dashboard/*": ["app/(site)/dashboard/*"]
     }
   },
   "include": [
