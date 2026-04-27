@@ -9,10 +9,11 @@ const NAV: { href: string; label: string }[] = [
   { href: "/admin/credits", label: "积分调整" },
   { href: "/admin/pricing", label: "模型定价" },
   { href: "/admin/audit", label: "审计日志" },
+  { href: "/admin/console", label: "环境诊断" },
 ];
 
 function navActive(pathname: string, href: string): boolean {
-  if (href === "/admin") return pathname === "/admin";
+  if (href === "/admin") return pathname === "/admin" || pathname === "/admin/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

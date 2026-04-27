@@ -24,7 +24,7 @@
 - 邮箱 **注册 / 登录**（Supabase Auth）
 - **`/generate`**：多模型卡片单选、可选测试备注、**提示词 + 可选参考图（同一栏）** → Server Action 调上游；**模型 id 与每档积分以服务端 `lib/models.ts` 为准**（`creditsPerGeneration`）；成功按模型扣积分（失败不扣）；**内测**见 `GENERATION_TESTING_MODE`，开启后不扣
 - **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、积分调整审计、充值记录
-- **`/admin`**（可选）：加减积分、创建/删除 Auth 用户；审计 `admin_balance_logs`；需 `ADMIN_EMAILS` + `SUPABASE_SERVICE_ROLE_KEY`；登录页可用 `ADMIN_LOGIN_EMAIL` 配合输入 `admin` 快捷登录
+- **`/admin`**（可选）：控制台（侧栏多页）；需 `ADMIN_EMAILS` + `SUPABASE_SERVICE_ROLE_KEY`。未登录访问会跳到 **`/admin/login`**（与用户站 **`/login`** 分离）；`admin` 快捷账号**仅**在该页配合 `ADMIN_LOGIN_EMAIL` 使用
 - **`/`**：产品介绍与入口
 - 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
 
@@ -46,9 +46,10 @@ app/
     page.tsx               # 首页
     login/ signup/ generate/ dashboard/
   admin/
-    layout.tsx             # ADMIN_EMAILS + 独立 AdminShell 侧栏
-    page.tsx               # 总览仪表盘
-    users/ credits/ pricing/ audit/   # 分模块子页
+    layout.tsx             # 包裹 admin 子路由
+    (auth)/login/          # /admin/login 管理专用登录（与用户 /login 分离）
+    (dashboard)/layout.tsx # ADMIN_EMAILS + AdminShell；未登录 → /admin/login
+    (dashboard)/           # 总览、users、credits、pricing、audit、console
     actions.ts             # Server Action：用户/积分/审计
 components/
   SiteHeader.tsx

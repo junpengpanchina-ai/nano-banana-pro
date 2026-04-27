@@ -58,12 +58,21 @@ export async function SiteHeader() {
           {user ? (
             <LogoutButton />
           ) : (
-            <Link
-              href="/login"
-              className="rounded-full bg-[#FF9D3C] px-4 py-1.5 text-sm font-semibold text-[#0F0E0C] transition hover:bg-[#ffb05a]"
-            >
-              登录
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/admin/login"
+                className="hidden text-xs text-zinc-500 transition hover:text-zinc-300 sm:inline"
+                title="运维登录管理控制台"
+              >
+                管理入口
+              </Link>
+              <Link
+                href="/login"
+                className="rounded-full bg-[#FF9D3C] px-4 py-1.5 text-sm font-semibold text-[#0F0E0C] transition hover:bg-[#ffb05a]"
+              >
+                登录
+              </Link>
+            </div>
           )}
         </nav>
       </div>

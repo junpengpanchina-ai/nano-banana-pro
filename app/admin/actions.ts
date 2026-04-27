@@ -94,6 +94,7 @@ export async function adminAdjustBalance(
   revalidatePath("/admin/users");
   revalidatePath("/admin/credits");
   revalidatePath("/admin/audit");
+  revalidatePath("/admin/console");
   revalidatePath("/dashboard");
   return { ok: true };
 }
