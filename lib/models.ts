@@ -72,10 +72,10 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
   {
     id: "gpt-image-2",
     label: "GPT Image 2",
-    description: "OpenAI GPT Image 线路（上游需支持该 model id）；可与香蕉系对比。",
+    description: "OpenAI GPT Image 线路（需要单独对接对应上游接口）；当前 draw 接口不支持，已临时关闭。",
     creditsPerGeneration: 20,
     priceCny: 2,
-    enabled: true,
+    enabled: false,
   },
 ];
 
