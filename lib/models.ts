@@ -38,6 +38,14 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     allowedImageSizes: ["1K"],
   },
   {
+    id: "nano-banana",
+    label: "Nana Standard",
+    description: "标准均衡：效果与速度折中，适合大多数日常出图。",
+    creditsPerGeneration: 20,
+    priceCny: 1.2,
+    enabled: true,
+  },
+  {
     id: "nano-banana-pro",
     label: "Nana Pro",
     description: "通用主力：正式出稿、产品主图与默认首选。",
