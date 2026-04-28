@@ -3,25 +3,22 @@
  */
 export function getAdminEnvDiagnostics(): {
   publicSupabaseConfigured: boolean;
-  adminLoginEmailConfigured: boolean;
-  adminEmailsConfigured: boolean;
-  adminEmailRuleCount: number;
+  adminAuthConfigured: boolean;
+  adminAuthMissing: string;
   serviceRoleConfigured: boolean;
 } {
-  const adminLogin = process.env.ADMIN_LOGIN_EMAIL?.trim() ?? "";
-  const rawEmails = process.env.ADMIN_EMAILS?.trim() ?? "";
-  const parts = rawEmails
-    .split(/[,;\n]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+  const hasPass = Boolean(process.env.ADMIN_PASSWORD?.trim());
+  const hasSecret = Boolean(process.env.ADMIN_SESSION_SECRET?.trim());
+  const missing: string[] = [];
+  if (!hasPass) missing.push("ADMIN_PASSWORD");
+  if (!hasSecret) missing.push("ADMIN_SESSION_SECRET");
 
   return {
     publicSupabaseConfigured: Boolean(
       process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
     ),
-    adminLoginEmailConfigured: adminLogin.includes("@"),
-    adminEmailsConfigured: parts.length > 0,
-    adminEmailRuleCount: parts.length,
+    adminAuthConfigured: hasPass && hasSecret,
+    adminAuthMissing: missing.join(", "),
     serviceRoleConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
   };
 }

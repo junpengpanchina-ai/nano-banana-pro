@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isAdminEmail } from "@/lib/admin-auth";
+import { requireAdminSession } from "@/lib/admin-session";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,11 +19,10 @@ export async function adminAdjustBalance(
   deltaRaw: number,
   noteRaw: string | null,
 ): Promise<AdminFormState> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.email || !isAdminEmail(user.email)) {
+  let operator = "admin";
+  try {
+    operator = (await requireAdminSession()).username;
+  } catch {
     return { ok: false, error: "无权限" };
   }
 
@@ -70,7 +68,7 @@ export async function adminAdjustBalance(
     delta_images: delta,
     balance_after: next,
     note,
-    operator_email: user.email,
+    operator_email: operator,
   });
   if (logErr) {
     await admin.from("profiles").update({ balance_images: current }).eq("id", userId);
@@ -121,11 +119,9 @@ async function resolveProfileUserId(admin: ReturnType<typeof createAdminClient>,
 
 /** 在 Supabase Auth 创建用户（触发器会建 profiles）；初始积分 0。 */
 export async function adminCreateUserForm(_prev: AdminFormState, formData: FormData): Promise<AdminFormState> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.email || !isAdminEmail(user.email)) {
+  try {
+    await requireAdminSession();
+  } catch {
     return { ok: false, error: "无权限" };
   }
 
@@ -159,11 +155,9 @@ export async function adminCreateUserForm(_prev: AdminFormState, formData: FormD
 
 /** 删除 Auth 用户（级联删除 profiles、其任务等，慎用）。支持 UUID 或注册邮箱。 */
 export async function adminDeleteUserForm(_prev: AdminFormState, formData: FormData): Promise<AdminFormState> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.email || !isAdminEmail(user.email)) {
+  try {
+    await requireAdminSession();
+  } catch {
     return { ok: false, error: "无权限" };
   }
 
@@ -176,10 +170,6 @@ export async function adminDeleteUserForm(_prev: AdminFormState, formData: FormD
   const targetId = await resolveProfileUserId(admin, raw);
   if (!targetId) {
     return { ok: false, error: "未找到该用户（请检查 UUID 或邮箱）" };
-  }
-
-  if (targetId === user.id) {
-    return { ok: false, error: "不能删除当前登录的管理员账号" };
   }
 
   const { error } = await admin.auth.admin.deleteUser(targetId);

@@ -1,22 +1,14 @@
-import { createClient } from "@/lib/supabase/server";
-import { isAdminEmail } from "@/lib/admin-auth";
 import { getAdminEnvDiagnostics } from "@/lib/admin-debug";
+import { readAdminSession } from "@/lib/admin-session";
 
 export default async function AdminConsolePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   const env = getAdminEnvDiagnostics();
-  const admin = user?.email ? isAdminEmail(user.email) : false;
+  const sess = await readAdminSession();
 
   const rows: { key: string; value: string }[] = [
-    { key: "当前会话用户 id", value: user?.id ?? "（未登录）" },
-    { key: "当前会话邮箱", value: user?.email ?? "—" },
-    { key: "是否命中 ADMIN_EMAILS", value: admin ? "是" : "否" },
+    { key: "后台会话", value: sess ? `已登录（${sess.username}）` : "（未登录）" },
     { key: "NEXT_PUBLIC_SUPABASE 已配置", value: env.publicSupabaseConfigured ? "是" : "否" },
-    { key: "ADMIN_LOGIN_EMAIL 已配置", value: env.adminLoginEmailConfigured ? "是（登录框可输入 admin）" : "否" },
-    { key: "ADMIN_EMAILS 已配置", value: env.adminEmailsConfigured ? `是（${env.adminEmailRuleCount} 条规则）` : "否" },
+    { key: "ADMIN 后台鉴权已配置", value: env.adminAuthConfigured ? "是" : `否（缺少：${env.adminAuthMissing || "—"}）` },
     { key: "SUPABASE_SERVICE_ROLE_KEY 已配置", value: env.serviceRoleConfigured ? "是" : "否" },
   ];
 

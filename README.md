@@ -24,7 +24,7 @@
 - 邮箱 **注册 / 登录**（Supabase Auth）
 - **`/generate`**：多模型卡片单选、可选测试备注、**提示词 + 可选参考图（同一栏）** → Server Action 调上游；**模型 id 与每档积分以服务端 `lib/models.ts` 为准**（`creditsPerGeneration`）；成功按模型扣积分（失败不扣）；**内测**见 `GENERATION_TESTING_MODE`，开启后不扣
 - **`/dashboard`**：剩余次数、生成记录（展示名 / 模型 id / 状态 / 图 / 可编辑测试备注）、积分调整审计、充值记录
-- **`/admin`**（可选）：控制台（侧栏多页）；需 `ADMIN_EMAILS` + `SUPABASE_SERVICE_ROLE_KEY`。未登录访问会跳到 **`/admin/login`**（与用户站 **`/login`** 分离）；`admin` 快捷账号**仅**在该页配合 `ADMIN_LOGIN_EMAIL` 使用
+- **`/admin`**（可选）：控制台（侧栏多页）；需 `SUPABASE_SERVICE_ROLE_KEY`。未登录访问会跳到 **`/admin/login`**（与用户站 **`/login`** 分离）；管理后台登录**不走 Supabase Auth**，使用独立账号密码（`ADMIN_USERNAME` / `ADMIN_PASSWORD`）+ 会话密钥（`ADMIN_SESSION_SECRET`）
 - **`/`**：产品介绍与入口
 - 上游 **API Key、完整接口 URL** 仅通过 **环境变量** 注入服务端，不在前端暴露
 
@@ -48,7 +48,7 @@ app/
   admin/
     layout.tsx             # 包裹 admin 子路由
     (auth)/login/          # /admin/login 管理专用登录（与用户 /login 分离）
-    (dashboard)/layout.tsx # ADMIN_EMAILS + AdminShell；未登录 → /admin/login
+    (dashboard)/layout.tsx # 管理后台会话 + AdminShell；未登录 → /admin/login
     (dashboard)/           # 总览、users、credits、pricing、audit、console
     actions.ts             # Server Action：用户/积分/审计
 components/
@@ -90,8 +90,9 @@ supabase/
 | `SUPABASE_SERVICE_ROLE_KEY` | **仅服务端** | `service_role`，用于扣次、写任务、Storage 上传等；**禁止**加 `NEXT_PUBLIC_` |
 | `SUPABASE_GENERATION_BUCKET` | 仅服务端（可选） | 存生成图的桶名，默认 `generations` |
 | `GENERATION_TESTING_MODE` | 仅服务端（可选） | 设为 `1` / `true` / `yes` 时：**不校验、不扣** `balance_images`，仍写 `image_jobs` 与 Storage；顶栏与创作页显示内测文案。正式上线前关闭 |
-| `ADMIN_EMAILS` | 仅服务端（可选） | 逗号分隔管理员邮箱（小写比对）；配置后对应用户登录可见顶栏「管理」并访问 `/admin`（依赖 `SUPABASE_SERVICE_ROLE_KEY`） |
-| `ADMIN_LOGIN_EMAIL` | 仅服务端（可选） | 登录框输入 `admin` 时映射到的真实邮箱（须在 Supabase Auth 存在且与 `ADMIN_EMAILS` 之一一致，方可进 `/admin`） |
+| `ADMIN_USERNAME` | 仅服务端（可选） | 管理后台账号（默认 `admin`） |
+| `ADMIN_PASSWORD` | 仅服务端（建议必配） | 管理后台密码（生产务必配置） |
+| `ADMIN_SESSION_SECRET` | 仅服务端（建议必配） | 管理后台会话 Cookie 签名密钥（生产务必配置为随机长串，>=32 字符） |
 
 ### Supabase 直连 Postgres（可选）
 

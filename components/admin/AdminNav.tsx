@@ -57,6 +57,14 @@ export function AdminNav({ operatorEmail }: Props) {
         <p className="truncate" title={operatorEmail}>
           当前：{operatorEmail}
         </p>
+        <form action="/admin/auth/logout" method="post" className="mt-3">
+          <button
+            type="submit"
+            className="inline-flex w-full items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-900/70 hover:text-zinc-100"
+          >
+            退出管理后台
+          </button>
+        </form>
         <Link href="/dashboard" className="mt-2 inline-block font-medium text-[#FF9D3C] hover:underline">
           返回用户中心 →
         </Link>

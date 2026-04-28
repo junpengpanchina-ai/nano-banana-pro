@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
 import { isAnonymousGenerateEnabled } from "@/lib/anonymous-generate-mode";
 import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
-import { isAdminEmail } from "@/lib/admin-auth";
 
 export async function SiteHeader() {
   const testingMode = isGenerationTestingMode();
@@ -37,11 +36,6 @@ export async function SiteHeader() {
           <Link href="/dashboard" className="text-zinc-400 transition hover:text-white">
             记录
           </Link>
-          {user?.email && isAdminEmail(user.email) ? (
-            <Link href="/admin" className="text-zinc-400 transition hover:text-[#FF9D3C]">
-              管理
-            </Link>
-          ) : null}
           {anonymousGenerate && !user ? (
             <span className="rounded-full border border-amber-500/45 bg-amber-950/40 px-3 py-1 text-xs font-semibold text-amber-200">
               免登录测试
