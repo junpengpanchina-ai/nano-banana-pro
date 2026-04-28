@@ -16,14 +16,14 @@ export function AdminCreditsForm() {
     <form action={formAction} className="mt-4 space-y-4 rounded-2xl border border-zinc-800 bg-[#161412] p-5">
       <div>
         <label htmlFor="admin-user-id" className="text-sm text-zinc-400">
-          用户 UUID（与 Auth 用户 id 相同）
+          用户 UUID 或邮箱
         </label>
         <input
           id="admin-user-id"
           name="userId"
           required
           autoComplete="off"
-          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          placeholder="uuid 或 user@example.com"
           className="mt-1 w-full rounded-lg border border-zinc-700 bg-[#0F0E0C] px-3 py-2 font-mono text-sm text-white outline-none focus:border-[#FF9D3C]"
         />
       </div>

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AdminCreateUserForm } from "@/components/admin/AdminCreateUserForm";
 import { AdminDeleteUserForm } from "@/components/admin/AdminDeleteUserForm";
+import { CopyButton } from "@/components/admin/CopyButton";
 
 export default async function AdminUsersPage() {
   const admin = createAdminClient();
@@ -52,11 +53,21 @@ export default async function AdminUsersPage() {
               ) : (
                 profiles!.map((row) => (
                   <tr key={row.id} className="bg-[#0F0E0C]">
-                    <td className="max-w-[200px] truncate px-3 py-2 font-mono text-xs text-zinc-400" title={row.id}>
-                      {row.id}
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="max-w-[200px] truncate font-mono text-xs text-zinc-400" title={row.id}>
+                          {row.id}
+                        </span>
+                        <CopyButton value={row.id} title="复制 UUID" />
+                      </div>
                     </td>
                     <td className="max-w-[180px] truncate px-3 py-2 text-zinc-200" title={row.email ?? ""}>
-                      {row.email ?? "—"}
+                      <div className="flex items-center gap-2">
+                        <span className="max-w-[180px] truncate" title={row.email ?? ""}>
+                          {row.email ?? "—"}
+                        </span>
+                        {row.email ? <CopyButton value={row.email} title="复制邮箱" /> : null}
+                      </div>
                     </td>
                     <td className="max-w-[120px] truncate px-3 py-2 text-zinc-300">{row.display_name ?? "—"}</td>
                     <td className="px-3 py-2 tabular-nums text-[#FF9D3C]">{row.balance_images}</td>

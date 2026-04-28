@@ -26,10 +26,8 @@ export async function adminAdjustBalance(
     return { ok: false, error: "无权限" };
   }
 
-  const userId = userIdRaw.trim();
-  if (!UUID_RE.test(userId)) {
-    return { ok: false, error: "用户 ID 格式无效" };
-  }
+  const raw = userIdRaw.trim();
+  if (!raw) return { ok: false, error: "请填写用户 UUID 或邮箱" };
 
   const delta = Math.trunc(Number(deltaRaw));
   if (!Number.isFinite(delta) || delta === 0) {
@@ -41,6 +39,11 @@ export async function adminAdjustBalance(
 
   const note = (noteRaw ?? "").trim().slice(0, 500) || null;
   const admin = createAdminClient();
+
+  const userId = await resolveProfileUserId(admin, raw);
+  if (!userId) {
+    return { ok: false, error: "未找到该用户（请检查 UUID 或邮箱）" };
+  }
 
   const { data: profile, error: pErr } = await admin
     .from("profiles")
