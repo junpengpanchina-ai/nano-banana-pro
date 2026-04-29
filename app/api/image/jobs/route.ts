@@ -3,6 +3,8 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAnonymousGeneratePoolUserId } from "@/lib/anonymous-generate-mode";
 import { completeImageGenerationJob, prepareImageGenerationJob } from "@/lib/run-generate-image";
+import { normalizeLocale } from "@/lib/i18n/locale";
+import { pickModerationDict } from "@/lib/i18n/moderation";
 
 export const maxDuration = 60;
 
@@ -16,8 +18,12 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const acceptLanguage = request.headers.get("accept-language") ?? "";
+  const firstLang = acceptLanguage.split(",")[0]?.trim() ?? "";
+  const dict = pickModerationDict(normalizeLocale(firstLang));
+
   if (!user && !getAnonymousGeneratePoolUserId()) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ ok: false, error: dict.unauthorized }, { status: 401 });
   }
 
   let body: {
@@ -27,11 +33,12 @@ export async function POST(request: Request) {
     aspectRatio?: unknown;
     imageSize?: unknown;
     referenceImageUrls?: unknown;
+    locale?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: dict.invalidJson }, { status: 400 });
   }
 
   const prompt = typeof body.prompt === "string" ? body.prompt : "";
@@ -47,18 +54,22 @@ export async function POST(request: Request) {
   const referenceImageUrls = Array.isArray(body.referenceImageUrls)
     ? body.referenceImageUrls.filter((x): x is string => typeof x === "string")
     : undefined;
+  const locale = typeof body.locale === "string" ? body.locale : null;
 
   const prep = await prepareImageGenerationJob(prompt, modelId, testNote, {
     aspectRatio,
     imageSize,
     referenceImageUrls,
+    locale,
   });
 
   if (!prep.ok) {
     const err = prep.error;
     let status = 400;
-    if (err.includes("请先登录")) status = 401;
-    else if (err.includes("次数不足") || err.includes("积分不足")) status = 402;
+    if (err === dict.unauthorized) status = 401;
+    // locale-specific insufficient credits: detect via 402 fallback when it contains a number pattern is unreliable;
+    // so keep a conservative heuristic.
+    else if (err.toLowerCase().includes("credit") || err.includes("积分") || err.includes("積分")) status = 402;
     else if (err.includes("管理员")) status = 500;
     return NextResponse.json({ ok: false, error: err }, { status });
   }

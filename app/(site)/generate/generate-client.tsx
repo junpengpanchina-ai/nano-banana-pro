@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { submitReferenceImage } from "@/app/generate/actions";
+import { normalizeLocale } from "@/lib/i18n/locale";
+import { pickModerationDict } from "@/lib/i18n/moderation";
 import { MAX_PROMPT_LENGTH } from "@/lib/constants";
 import {
   ASPECT_RATIO_OPTIONS,
@@ -53,6 +55,10 @@ export function GenerateClient({
   models,
   testingMode = false,
 }: Props) {
+  const dict =
+    typeof navigator !== "undefined"
+      ? pickModerationDict(normalizeLocale(navigator.language))
+      : pickModerationDict("zh-CN");
   const canAct = isLoggedIn || anonymousGenerateEnabled;
   const defaultModelId = models[0]?.id ?? "";
   const [modelId, setModelId] = useState(defaultModelId);
@@ -178,6 +184,7 @@ export function GenerateClient({
           aspectRatio,
           imageSize,
           referenceImageUrls: refUrls,
+          locale: typeof navigator !== "undefined" ? navigator.language : null,
         }),
       });
 
@@ -185,14 +192,14 @@ export function GenerateClient({
       try {
         queued = (await res.json()) as typeof queued;
       } catch {
-        setError("服务器返回异常，请稍后重试。");
+        setError(dict.serverErrorTryLater);
         setLoading(false);
         setStreamProgress(0);
         return;
       }
 
       if (!res.ok || !queued.ok) {
-        setError(queued.error ?? `请求失败（HTTP ${res.status}）`);
+        setError(queued.error ?? dict.requestFailedHttp(res.status));
         setLoading(false);
         setStreamProgress(0);
         return;
@@ -200,7 +207,7 @@ export function GenerateClient({
 
       const jid = queued.jobId;
       if (!jid) {
-        setError("未返回任务编号，请稍后重试。");
+        setError(dict.serverErrorTryLater);
         setLoading(false);
         setStreamProgress(0);
         return;
@@ -210,7 +217,7 @@ export function GenerateClient({
         if (streamDoneRef.current) return;
         eventSourceRef.current?.close();
         eventSourceRef.current = null;
-        setError("等待超时：任务可能仍在后台执行，请到「我的记录」查看结果。");
+        setError(dict.timeoutWaiting);
         setLoading(false);
         setStreamProgress(0);
       }, 130_000);
@@ -262,7 +269,7 @@ export function GenerateClient({
         if (!streamDoneRef.current) {
           setLoading(false);
           setStreamProgress(0);
-          setError("连接已断开：若任务已提交，请稍后在「我的记录」中查看。");
+          setError(dict.connectionLostCheckDashboard);
         }
       };
     } catch {
@@ -645,7 +652,8 @@ export function GenerateClient({
         </div>
 
         <p className="mx-auto mt-10 max-w-3xl text-center text-xs leading-relaxed text-zinc-600">
-          请勿生成违法、侵权或低俗内容。生成结果仅供参考，商用请自行确认版权与合规。
+          请勿生成涉及国家领导人、分裂/反国家、赌博、贩卖人口、色情、人体器官买卖等违法违规内容；亦请避免侵权素材。
+          生成结果仅供参考，商用请自行确认版权与合规。
         </p>
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAnonymousGeneratePoolUserId } from "@/lib/anonymous-generate-mode";
+import { normalizeLocale } from "@/lib/i18n/locale";
+import { pickModerationDict } from "@/lib/i18n/moderation";
 
 export const maxDuration = 130;
 export const dynamic = "force-dynamic";
@@ -17,12 +19,15 @@ function sseEncode(data: unknown): Uint8Array {
  * SSE：轮询 `image_jobs` 直至 succeeded / failed 或超时。用于创作页流式反馈；关闭连接不取消后台任务。
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ jobId: string }> },
 ): Promise<Response> {
   const { jobId } = await context.params;
+  const acceptLanguage = request.headers.get("accept-language") ?? "";
+  const firstLang = acceptLanguage.split(",")[0]?.trim() ?? "";
+  const dict = pickModerationDict(normalizeLocale(firstLang));
   if (!jobId || typeof jobId !== "string") {
-    return new Response("Bad Request", { status: 400 });
+    return new Response(dict.badRequest, { status: 400 });
   }
 
   const supabase = await createClient();
@@ -32,7 +37,7 @@ export async function GET(
   const poolId = getAnonymousGeneratePoolUserId();
 
   if (!user && !poolId) {
-    return new Response("Unauthorized", { status: 401 });
+    return new Response(dict.unauthorized, { status: 401 });
   }
 
   const { data: jobPeek, error: peekErr } = await supabase
@@ -42,16 +47,16 @@ export async function GET(
     .maybeSingle();
 
   if (peekErr || !jobPeek) {
-    return new Response("Not Found", { status: 404 });
+    return new Response(dict.notFound, { status: 404 });
   }
 
   const ownerId = jobPeek.user_id as string;
   if (user) {
     if (ownerId !== user.id) {
-      return new Response("Forbidden", { status: 403 });
+      return new Response(dict.forbidden, { status: 403 });
     }
   } else if (!poolId || ownerId !== poolId) {
-    return new Response("Forbidden", { status: 403 });
+    return new Response(dict.forbidden, { status: 403 });
   }
 
   const balanceUserId = ownerId;
@@ -63,7 +68,7 @@ export async function GET(
 
       try {
         controller.enqueue(
-          sseEncode({ type: "subscribed", jobId, message: "已订阅任务状态" }),
+          sseEncode({ type: "subscribed", jobId, message: "subscribed" }),
         );
 
         while (Date.now() < deadline) {
@@ -74,7 +79,7 @@ export async function GET(
             .maybeSingle();
 
           if (error || !row) {
-            controller.enqueue(sseEncode({ type: "terminal", ok: false, error: "任务不存在或无法读取" }));
+            controller.enqueue(sseEncode({ type: "terminal", ok: false, error: dict.jobNotReadable }));
             break;
           }
 
@@ -104,7 +109,7 @@ export async function GET(
                 type: "terminal",
                 ok: false,
                 status: "failed",
-                error: (row.error_message as string) || "生成失败",
+                error: (row.error_message as string) || dict.serverErrorTryLater,
               }),
             );
             break;
@@ -120,7 +125,7 @@ export async function GET(
             sseEncode({
               type: "terminal",
               ok: false,
-              error: "等待结果超时，请稍后在「我的记录」中查看任务是否已完成。",
+              error: dict.timeoutWaiting,
             }),
           );
         }

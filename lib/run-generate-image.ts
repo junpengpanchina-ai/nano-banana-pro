@@ -12,6 +12,8 @@ import {
   appendPostgrestTroubleshootHint,
   isCreditsChargedColumnMissing,
 } from "@/lib/postgrest-error-hint";
+import { normalizeLocale } from "@/lib/i18n/locale";
+import { pickModerationDict } from "@/lib/i18n/moderation";
 
 const MAX_TEST_NOTE = 2000;
 
@@ -28,6 +30,7 @@ export type RunGenerateDrawInput = {
   aspectRatio?: string | null;
   imageSize?: string | null;
   referenceImageUrls?: string[] | null;
+  locale?: string | null;
 };
 
 function priceCnyForModelId(modelId: string): number {
@@ -45,14 +48,16 @@ export async function prepareImageGenerationJob(
   testNoteRaw?: string | null,
   drawInput?: RunGenerateDrawInput,
 ): Promise<PrepareImageJobResult> {
+  const locale = drawInput?.locale ?? null;
+  const dict = pickModerationDict(normalizeLocale(locale));
   if (getEnabledImageModels().length === 0) {
-    return { ok: false, error: "暂无可用模型，请联系管理员。" };
+    return { ok: false, error: dict.noModelsEnabled };
   }
 
   const modelId = modelIdRaw.trim();
   const selected = getImageModel(modelId);
   if (!selected) {
-    return { ok: false, error: "模型不可用或未启用" };
+    return { ok: false, error: dict.modelUnavailable };
   }
 
   let testNote: string | null = null;
@@ -71,13 +76,14 @@ export async function prepareImageGenerationJob(
   const poolUserId = getAnonymousGeneratePoolUserId();
   const actingUserId = user?.id ?? poolUserId ?? null;
   if (!actingUserId) {
-    return { ok: false, error: "请先登录" };
+    return { ok: false, error: dict.unauthorized };
   }
 
   const refUrls = sanitizeReferenceImageUrls(drawInput?.referenceImageUrls ?? [], actingUserId, 10);
 
   const validated = validatePromptInput(promptRaw, {
     minLength: refUrls.length > 0 ? 5 : 1,
+    locale: drawInput?.locale ?? null,
   });
   if (!validated.ok) {
     return { ok: false, error: validated.error };
@@ -115,7 +121,7 @@ export async function prepareImageGenerationJob(
   if (!testing && profile.balance_images < creditCost) {
     return {
       ok: false,
-      error: `积分不足（本模型需 ${creditCost} 积分，当前 ${profile.balance_images}）`,
+      error: dict.insufficientCredits(creditCost, profile.balance_images),
     };
   }
 
@@ -306,7 +312,11 @@ export async function completeImageGenerationJob(jobId: string): Promise<void> {
 /**
  * 同步路径：prepare → complete → 组装返回（供 Server Action 与 POST /api/image/generate）。
  */
-export async function buildGenerateImageResultFromJob(jobId: string): Promise<GenerateImageResult> {
+export async function buildGenerateImageResultFromJob(
+  jobId: string,
+  locale?: string | null,
+): Promise<GenerateImageResult> {
+  const dict = pickModerationDict(normalizeLocale(locale ?? null));
   const admin = createAdminClient();
   const { data: row, error } = await admin
     .from("image_jobs")
@@ -315,11 +325,11 @@ export async function buildGenerateImageResultFromJob(jobId: string): Promise<Ge
     .maybeSingle();
 
   if (error || !row) {
-    return { ok: false, error: "任务不存在或无法读取" };
+    return { ok: false, error: dict.jobNotReadable };
   }
 
   if (row.status === "pending") {
-    return { ok: false, error: "任务仍在处理中", jobId };
+    return { ok: false, error: dict.jobStillProcessing, jobId };
   }
 
   if (row.status === "failed") {
@@ -350,5 +360,5 @@ export async function runGenerateImageJob(
   if (!prep.ok) return prep;
 
   await completeImageGenerationJob(prep.jobId);
-  return buildGenerateImageResultFromJob(prep.jobId);
+  return buildGenerateImageResultFromJob(prep.jobId, drawInput?.locale ?? null);
 }
