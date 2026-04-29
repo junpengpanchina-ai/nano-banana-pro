@@ -1,6 +1,6 @@
 # nano-banana-pro
 
-轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每次成功按模型扣积分**（存于 `profiles.balance_images`，如 Fast/HD 10 分、GPT Image 20 分、Pro 系 30 分，可在 `lib/models.ts` 的 `creditsPerGeneration` 调整）；积分不足需运营在 `/admin` 或库内充值。不接 Stripe，不做复杂分销后台。（`price_cny` 仍可按模型写入库备查，当前前端不展示价格。）
+轻量 **AI 图片生成中转台**：用户登录后在 **`/generate` 选择模型** 并提交提示词，服务端调用上游绘图能力，将结果写入 **Supabase**；**每次成功按模型扣积分**（存于 `profiles.balance_images`；各模型单次消耗见 `lib/models.ts` 的 `creditsPerGeneration`，改后需重新部署）；积分不足需运营在 `/admin` 或库内充值。不接 Stripe，不做复杂分销后台。（`price_cny` 仍可按模型写入库备查，当前前端不展示价格。）
 
 **完整合并文档（单文件 Markdown）**：[`docs/COMPLETE_GUIDE.md`](./docs/COMPLETE_GUIDE.md)
 
