@@ -1,9 +1,43 @@
 import { getAdminEnvDiagnostics } from "@/lib/admin-debug";
+import { getGenerateEnvDiagnostics, probeImageJobsCreditsChargedColumn } from "@/lib/generate-diagnostics";
 import { readAdminSession } from "@/lib/admin-session";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function AdminConsolePage() {
   const env = getAdminEnvDiagnostics();
   const sess = await readAdminSession();
+
+  let imageJobsCreditsProbe: { key: string; value: string } = {
+    key: "image_jobs.credits_charged 列（生成写库依赖）",
+    value: "未配置 SUPABASE_SERVICE_ROLE_KEY，跳过数据库探测",
+  };
+  if (env.serviceRoleConfigured) {
+    try {
+      const admin = createAdminClient();
+      const probe = await probeImageJobsCreditsChargedColumn(admin);
+      if (!probe.ok) {
+        imageJobsCreditsProbe = {
+          key: "image_jobs.credits_charged 列（生成写库依赖）",
+          value: `探测异常：${probe.note}`,
+        };
+      } else if (probe.creditsChargedPresent) {
+        imageJobsCreditsProbe = {
+          key: "image_jobs.credits_charged 列（生成写库依赖）",
+          value: "存在（迁移已就绪）",
+        };
+      } else {
+        imageJobsCreditsProbe = {
+          key: "image_jobs.credits_charged 列（生成写库依赖）",
+          value: `缺失：${probe.note}。请执行 supabase/migrations/20260429100000_image_jobs_credits_charged.sql`,
+        };
+      }
+    } catch (e) {
+      imageJobsCreditsProbe = {
+        key: "image_jobs.credits_charged 列（生成写库依赖）",
+        value: e instanceof Error ? e.message : "数据库探测失败",
+      };
+    }
+  }
 
   const rows: { key: string; value: string }[] = [
     { key: "后台会话", value: sess ? `已登录（${sess.username}）` : "（未登录）" },
@@ -11,6 +45,8 @@ export default async function AdminConsolePage() {
     { key: "ADMIN 后台鉴权已配置", value: env.adminAuthConfigured ? "是" : `否（缺少：${env.adminAuthMissing || "—"}）` },
     { key: "SUPABASE_SERVICE_ROLE_KEY 已配置", value: env.serviceRoleConfigured ? "是" : "否" },
   ];
+
+  const generateRows = getGenerateEnvDiagnostics();
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-10">
@@ -29,6 +65,35 @@ export default async function AdminConsolePage() {
                 <td className="px-4 py-3 font-mono text-xs text-zinc-200 break-all">{r.value}</td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="mt-12 text-xl font-semibold text-white">生成链路（排障）</h2>
+      <p className="mt-2 text-sm text-zinc-400">
+        以下为服务端检测摘要；不展示任何密钥。若「credits_charged」缺失，生图可能在写库阶段失败（代码已对缺列做部分兜底，仍建议尽快执行迁移）。
+      </p>
+      <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-800 bg-[#121110]">
+        <table className="min-w-full text-left text-sm">
+          <tbody className="divide-y divide-zinc-800">
+            {generateRows.map((r) => (
+              <tr key={r.key} className="bg-[#0F0E0C]">
+                <th className="whitespace-nowrap px-4 py-3 font-medium text-zinc-500">{r.key}</th>
+                <td
+                  className={`px-4 py-3 font-mono text-xs break-all ${r.ok ? "text-zinc-200" : "text-amber-200/90"}`}
+                >
+                  {r.value}
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-[#0F0E0C]">
+              <th className="whitespace-nowrap px-4 py-3 font-medium text-zinc-500">
+                {imageJobsCreditsProbe.key}
+              </th>
+              <td className="px-4 py-3 font-mono text-xs text-zinc-200 break-all">
+                {imageJobsCreditsProbe.value}
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>

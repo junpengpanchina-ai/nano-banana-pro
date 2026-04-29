@@ -8,6 +8,10 @@ import { isGenerationTestingMode } from "@/lib/generation-testing-mode";
 import { parseAspectRatio, parseImageSize } from "@/lib/generation-draw-params";
 import { sanitizeReferenceImageUrls } from "@/lib/storage/validate-reference-url";
 import { getAnonymousGeneratePoolUserId } from "@/lib/anonymous-generate-mode";
+import {
+  appendPostgrestTroubleshootHint,
+  isCreditsChargedColumnMissing,
+} from "@/lib/postgrest-error-hint";
 
 const MAX_TEST_NOTE = 2000;
 
@@ -77,7 +81,16 @@ export async function runGenerateImageJob(
     .eq("id", actingUserId)
     .maybeSingle();
 
-  if (profileError || !profile) {
+  if (profileError) {
+    return {
+      ok: false,
+      error: appendPostgrestTroubleshootHint(
+        `用户资料读取失败：${profileError.message}`,
+        profileError,
+      ),
+    };
+  }
+  if (!profile) {
     return {
       ok: false,
       error: poolUserId && !user
@@ -112,7 +125,10 @@ export async function runGenerateImageJob(
     .single();
 
   if (insertError || !job) {
-    return { ok: false, error: insertError?.message ?? "创建任务失败" };
+    const base = insertError?.message
+      ? `创建任务失败：${insertError.message}`
+      : "创建任务失败";
+    return { ok: false, error: appendPostgrestTroubleshootHint(base, insertError ?? null) };
   }
 
   const jobId = job.id as string;
@@ -151,8 +167,35 @@ export async function runGenerateImageJob(
     })
     .eq("id", jobId);
 
-  if (successUpdateError) {
-    return { ok: false, error: "图片已生成但保存记录失败，请联系管理员。", jobId };
+  let finalUpdateError = successUpdateError;
+  if (isCreditsChargedColumnMissing(successUpdateError)) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn(
+        "[run-generate-image] image_jobs.credits_charged 缺失，已用不含该列的 UPDATE 兜底成功。请在 Supabase 执行 migration：20260429100000_image_jobs_credits_charged.sql",
+      );
+    }
+    // Backward compatibility: allow generation to succeed before this migration is applied.
+    const { error: retryWithoutCreditsError } = await admin
+      .from("image_jobs")
+      .update({
+        status: "succeeded",
+        image_url: finalUrl,
+        storage_path: persisted.ok ? persisted.storagePath : null,
+        upstream_request_id: upstream.upstreamRequestId ?? null,
+      })
+      .eq("id", jobId);
+    finalUpdateError = retryWithoutCreditsError;
+  }
+
+  if (finalUpdateError) {
+    return {
+      ok: false,
+      error: appendPostgrestTroubleshootHint(
+        "图片已生成但保存记录失败，请联系管理员。",
+        finalUpdateError,
+      ),
+      jobId,
+    };
   }
 
   if (testing) {
@@ -174,7 +217,10 @@ export async function runGenerateImageJob(
   if (balanceError) {
     return {
       ok: false,
-      error: "图片已保存但扣积分失败，请联系管理员。",
+      error: appendPostgrestTroubleshootHint(
+        "图片已保存但扣积分失败，请联系管理员。",
+        balanceError,
+      ),
       jobId,
     };
   }
