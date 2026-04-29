@@ -95,8 +95,10 @@ UPSTREAM_RESULT_PATH=/v1/draw/result
 5. `supabase/migrations/20260428140000_image_jobs_aspect_size.sql`
 6. `supabase/migrations/20260428180000_admin_balance_logs.sql`（若使用后台审计）
 7. `supabase/migrations/20260429100000_image_jobs_credits_charged.sql`
+8. `supabase/migrations/20260429140000_image_jobs_async_queue.sql`（异步生图：`credit_cost`、`reference_signed_urls`）
 
-> 若缺少 `image_jobs.credits_charged` 列，新版本写库可能失败；代码已对缺列做过兜底，仍建议尽快执行第 7 条。
+> 若缺少 `image_jobs.credits_charged` 列，新版本写库可能失败；代码已对缺列做过兜底，仍建议尽快执行第 7 条。  
+> **`/generate` 异步链路**依赖第 8 条；未执行时创建任务可能报列不存在。
 
 ---
 
@@ -118,7 +120,8 @@ npm run dev
 
 1. 注册/登录：`/signup` 或 `/login`。
 2. 打开 **`/generate`**，选择模型、可选宽高比与画质，输入提示词（有参考图时提示词至少 **5** 字）。
-3. 点击生成，右侧应出现结果图；失败时页面会展示错误文案（含常见排障提示）。
+3. 点击生成：页面会先 **202 创建任务**，再通过 **SSE** 订阅进度；**关闭标签页不会取消**后台出图，完成后可到 **`/dashboard`** 查看记录与图。
+4. 成功时右侧展示结果图；失败时展示错误文案（含常见排障提示）。
 
 **积分：** 非内测模式下，`profiles.balance_images` 须 ≥ 当前模型所需积分（见 `lib/models.ts` 的 `creditsPerGeneration`）。内测可设 `GENERATION_TESTING_MODE=1`。
 
@@ -134,9 +137,29 @@ curl -sS -X POST "http://localhost:3000/api/prompt" \
   -d '{"prompt":"一只猫"}' | jq .
 ```
 
-### 8.2 生图（与页面逻辑一致）
+### 8.2 异步生图（与 `/generate` 页面一致）
 
-**须携带已登录用户的 Cookie**（与浏览器同源会话）。示例（把 `Cookie` 换成你从 DevTools → Application → Cookies 里复制的整段）：
+**须携带已登录用户的 Cookie**。先创建任务（**HTTP 202** + `jobId`），再用浏览器或支持 SSE 的客户端订阅 `GET /api/image/jobs/<jobId>/events`。
+
+```bash
+# 1) 创建任务
+curl -sS -D - -X POST "http://localhost:3000/api/image/jobs" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <从浏览器复制的 Cookie>" \
+  -d '{
+    "prompt": "一只可爱的猫在草地上，插画风格",
+    "modelId": "nano-banana-fast",
+    "aspectRatio": "auto",
+    "imageSize": "1K"
+  }' -o /tmp/job.json
+
+# 2) 从 /tmp/job.json 读取 jobId 后（示例）用 curl 读 SSE（流式文本）
+# curl -N "http://localhost:3000/api/image/jobs/<jobId>/events" -H "Cookie: ..."
+```
+
+### 8.3 同步生图（单次请求等到结束）
+
+与 Server Action `submitGenerateImage` 相同，适合脚本一次拿结果：
 
 ```bash
 curl -sS -X POST "http://localhost:3000/api/image/generate" \
@@ -211,8 +234,10 @@ curl -sS -X POST "https://grsai.dakka.com.cn/v1/draw/result" \
 |------|------|
 | 上游轮询 | `lib/upstream/image-generation.ts` |
 | 生图主流程 | `lib/run-generate-image.ts` |
-| 生图 API | `app/api/image/generate/route.ts` |
-| 页面 Server Action | `app/(site)/generate/actions.ts` |
+| 同步生图 API | `app/api/image/generate/route.ts` |
+| 异步创建任务 | `app/api/image/jobs/route.ts` |
+| SSE 订阅 | `app/api/image/jobs/[jobId]/events/route.ts` |
+| 页面 Server Action（参考图上传等） | `app/(site)/generate/actions.ts` |
 | 前端页 | `app/(site)/generate/generate-client.tsx` |
 | 模型与积分 | `lib/models.ts` |
 

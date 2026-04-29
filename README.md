@@ -152,10 +152,12 @@ supabase/
 | 方法 | 路径 | 作用 |
 |------|------|------|
 | `POST` | `/api/prompt` | **提示词端口**：仅校验长度与敏感词，不写库、不扣次、不调上游。Body：`{ "prompt": string }`，返回 `{ ok, prompt? \| error? }`。 |
-| `POST` | `/api/image/generate` | **生图端口**：与页面内 Server Action 相同逻辑（写 `image_jobs`、扣次、尽量写入 Storage）。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?", "referenceImageUrls?" }`；`referenceImageUrls` 可选；**有参考图时**提示词至少 5 字，否则至少 1 字；参考图 URL 须为当前用户签名链（服务端校验）。宽高比、画质见 `lib/generation-draw-params.ts`。 |
+| `POST` | `/api/image/generate` | **同步生图**（一次请求等到结束）：与 `submitGenerateImage` Server Action 相同逻辑。Body 同下。 |
+| `POST` | `/api/image/jobs` | **异步生图**：校验后插入 `pending`，**202** 返回 `{ ok, jobId }`；出图在 `after()` 中继续，**关闭页面不中断**，完成后可在 **`/dashboard`** 查看。Body：`{ "prompt", "modelId", "testNote?", "aspectRatio?", "imageSize?", "referenceImageUrls?" }`。需数据库含 `credit_cost`、`reference_signed_urls` 列（见迁移 `20260429140000_image_jobs_async_queue.sql`）。 |
+| `GET` | `/api/image/jobs/[jobId]/events` | **SSE**：轮询该任务状态并推送 `pulse` / `terminal` 事件；创作页 `/generate` 用其显示进度。 |
 | `GET` | `/api/image/signed?jobId=<uuid>` | 为本人任务重新签发图片 URL：若存在 `storage_path` 则返回 **48h** 签名地址；否则返回已存的 `image_url`。 |
 
-网页 `/generate` 仍默认走 **Server Action**，不强制改用上述 REST。
+网页 **`/generate`** 使用 **`POST /api/image/jobs` + SSE**；脚本或兼容场景仍可用 **`POST /api/image/generate`** 或 Server Action `submitGenerateImage`。
 
 ---
 

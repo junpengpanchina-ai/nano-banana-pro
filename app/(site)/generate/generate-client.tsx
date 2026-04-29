@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { submitGenerateImage, submitReferenceImage } from "@/app/generate/actions";
+import { useEffect, useRef, useState } from "react";
+import { submitReferenceImage } from "@/app/generate/actions";
 import { MAX_PROMPT_LENGTH } from "@/lib/constants";
 import {
   ASPECT_RATIO_OPTIONS,
@@ -62,11 +62,23 @@ export function GenerateClient({
   const [testNote, setTestNote] = useState("");
   const [balance, setBalance] = useState(initialBalance);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /** 0–100：由 SSE `pulse` 推进，终端态前最高约 92 */
+  const [streamProgress, setStreamProgress] = useState(0);
   const [referenceItems, setReferenceItems] = useState<ReferenceSlot[]>([]);
   const [referenceUploading, setReferenceUploading] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const streamDoneRef = useRef(false);
+  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+      if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
+    };
+  }, []);
 
   function allowedSizesForModelId(id: string): ImageSizeOption[] {
     const m = models.find((x) => x.id === id);
@@ -144,32 +156,119 @@ export function GenerateClient({
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     if (!canAct) return;
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
+    streamDoneRef.current = false;
+
     setError(null);
     setImageUrl(null);
-    setJobId(null);
+    setStreamProgress(6);
     setLoading(true);
     try {
       const refUrls = referenceItems.length > 0 ? referenceItems.map((r) => r.signedUrl) : undefined;
-      const data = await submitGenerateImage(
-        prompt.trim(),
-        modelId,
-        testNote.trim() || null,
-        aspectRatio,
-        imageSize,
-        refUrls,
-      );
-      if (!data.ok) {
-        setError(data.error);
-        if (data.jobId) setJobId(data.jobId);
+      const res = await fetch("/api/image/jobs", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          modelId,
+          testNote: testNote.trim() || null,
+          aspectRatio,
+          imageSize,
+          referenceImageUrls: refUrls,
+        }),
+      });
+
+      let queued: { ok?: boolean; error?: string; jobId?: string };
+      try {
+        queued = (await res.json()) as typeof queued;
+      } catch {
+        setError("服务器返回异常，请稍后重试。");
+        setLoading(false);
+        setStreamProgress(0);
         return;
       }
-      setImageUrl(data.imageUrl);
-      setJobId(data.jobId);
-      setBalance(data.balanceImages);
+
+      if (!res.ok || !queued.ok) {
+        setError(queued.error ?? `请求失败（HTTP ${res.status}）`);
+        setLoading(false);
+        setStreamProgress(0);
+        return;
+      }
+
+      const jid = queued.jobId;
+      if (!jid) {
+        setError("未返回任务编号，请稍后重试。");
+        setLoading(false);
+        setStreamProgress(0);
+        return;
+      }
+
+      streamTimeoutRef.current = setTimeout(() => {
+        if (streamDoneRef.current) return;
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+        setError("等待超时：任务可能仍在后台执行，请到「我的记录」查看结果。");
+        setLoading(false);
+        setStreamProgress(0);
+      }, 130_000);
+
+      const es = new EventSource(`/api/image/jobs/${encodeURIComponent(jid)}/events`);
+      eventSourceRef.current = es;
+
+      es.onmessage = (ev) => {
+        let payload: {
+          type?: string;
+          n?: number;
+          ok?: boolean;
+          error?: string;
+          imageUrl?: string;
+          balanceImages?: number;
+          priceCny?: number;
+        };
+        try {
+          payload = JSON.parse(ev.data) as typeof payload;
+        } catch {
+          return;
+        }
+
+        if (payload.type === "pulse" && typeof payload.n === "number") {
+          setStreamProgress((prev) => Math.max(prev, Math.min(8 + payload.n! * 14, 92)));
+          return;
+        }
+
+        if (payload.type === "terminal") {
+          streamDoneRef.current = true;
+          if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
+          es.close();
+          eventSourceRef.current = null;
+          setLoading(false);
+          setStreamProgress(0);
+          if (!payload.ok) {
+            setError(payload.error ?? "生成失败");
+            return;
+          }
+          if (payload.imageUrl) setImageUrl(payload.imageUrl);
+          if (typeof payload.balanceImages === "number") setBalance(payload.balanceImages);
+        }
+      };
+
+      es.onerror = () => {
+        es.close();
+        eventSourceRef.current = null;
+        if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
+        if (!streamDoneRef.current) {
+          setLoading(false);
+          setStreamProgress(0);
+          setError("连接已断开：若任务已提交，请稍后在「我的记录」中查看。");
+        }
+      };
     } catch {
       setError("执行失败，请稍后重试。");
-    } finally {
       setLoading(false);
+      setStreamProgress(0);
     }
   }
 
@@ -480,11 +579,32 @@ export function GenerateClient({
               </div>
             </div>
 
-            <div className="relative mt-5 flex min-h-[320px] flex-1 flex-col overflow-hidden rounded-xl border border-dashed border-zinc-700 bg-[#0c0b0a] lg:min-h-[420px]">
+            <div
+              className="relative mt-5 flex min-h-[320px] flex-1 flex-col overflow-hidden rounded-xl border border-dashed border-zinc-700 bg-[#0c0b0a] lg:min-h-[420px]"
+              aria-busy={loading}
+            >
               {loading ? (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#0F0E0C]/75 backdrop-blur-sm">
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#0F0E0C]/75 px-6 backdrop-blur-sm">
                   <span className="h-10 w-10 animate-spin rounded-full border-2 border-[#FF9D3C] border-t-transparent" aria-hidden />
-                  <span className="text-sm font-medium text-[#FF9D3C]">正在创作…</span>
+                  <div
+                    className="flex w-full max-w-[280px] flex-col items-center gap-2"
+                    role="progressbar"
+                    aria-valuenow={streamProgress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuetext={`生成中约 ${streamProgress}%`}
+                  >
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full rounded-full bg-[#FF9D3C] transition-[width] duration-500 ease-out"
+                        style={{ width: `${streamProgress}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium text-[#FF9D3C]">正在创作…</span>
+                    <span className="text-center text-xs text-zinc-500">
+                      进度随任务轮询更新；关闭本页后任务仍会在后台执行，可在「我的记录」查看。
+                    </span>
+                  </div>
                 </div>
               ) : null}
 
@@ -521,12 +641,6 @@ export function GenerateClient({
                 </div>
               )}
             </div>
-
-            {jobId ? (
-              <p className="mt-4 text-xs text-zinc-500">
-                任务 ID：<span className="font-mono text-zinc-400">{jobId}</span>
-              </p>
-            ) : null}
           </div>
         </div>
 

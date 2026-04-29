@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { allowedImageSizesFor, getEnabledImageModels, getImageModel } from "@/lib/models";
+import { allowedImageSizesFor, getEnabledImageModels, getImageModel, IMAGE_MODELS } from "@/lib/models";
 import { validatePromptInput } from "@/lib/prompt/validate";
 import { requestUpstreamImage } from "@/lib/upstream/image-generation";
 import { persistJobImageToStorage } from "@/lib/storage/persist-job-image";
@@ -19,6 +19,8 @@ export type GenerateImageResult =
   | { ok: true; jobId: string; imageUrl: string; balanceImages: number; priceCny: number }
   | { ok: false; error: string; jobId?: string };
 
+export type PrepareImageJobResult = { ok: true; jobId: string } | { ok: false; error: string };
+
 /**
  * Server-only: auth、（可选）扣次、上游出图、写入 Storage 并记 48h 签名链（失败则回落上游 URL）。
  */
@@ -28,12 +30,21 @@ export type RunGenerateDrawInput = {
   referenceImageUrls?: string[] | null;
 };
 
-export async function runGenerateImageJob(
+function priceCnyForModelId(modelId: string): number {
+  const m = IMAGE_MODELS.find((x) => x.id === modelId);
+  return m ? Number(m.priceCny) : 0;
+}
+
+/**
+ * 校验用户、余额、写 pending 任务（含锁定 credit_cost 与参考图 URL），不调用上游。
+ * 供「异步队列」与同步 `runGenerateImageJob` 共用。
+ */
+export async function prepareImageGenerationJob(
   promptRaw: string,
   modelIdRaw: string,
   testNoteRaw?: string | null,
   drawInput?: RunGenerateDrawInput,
-): Promise<GenerateImageResult> {
+): Promise<PrepareImageJobResult> {
   if (getEnabledImageModels().length === 0) {
     return { ok: false, error: "暂无可用模型，请联系管理员。" };
   }
@@ -120,6 +131,8 @@ export async function runGenerateImageJob(
       aspect_ratio: aspectRatio,
       image_size: imageSize,
       status: "pending",
+      credit_cost: creditCost,
+      reference_signed_urls: refUrls.length > 0 ? refUrls : null,
     })
     .select("id")
     .single();
@@ -131,105 +144,211 @@ export async function runGenerateImageJob(
     return { ok: false, error: appendPostgrestTroubleshootHint(base, insertError ?? null) };
   }
 
-  const jobId = job.id as string;
+  return { ok: true, jobId: job.id as string };
+}
 
-  const upstream = await requestUpstreamImage(prompt, selected.id, {
-    aspectRatio,
-    imageSize,
-    referenceUrls: refUrls,
-  });
+/**
+ * 在请求结束后由 `after()` 调用：拉 pending 任务、调上游、写库、成功则扣积分。
+ * 用户断开页面不影响此函数执行完毕。
+ */
+export async function completeImageGenerationJob(jobId: string): Promise<void> {
+  const admin = createAdminClient();
 
-  if (!upstream.ok) {
-    await admin
-      .from("image_jobs")
-      .update({
-        status: "failed",
-        error_message: upstream.error,
-        upstream_request_id: upstream.upstreamRequestId ?? null,
-      })
-      .eq("id", jobId);
+  try {
+    const { data: row, error: loadError } = await admin.from("image_jobs").select("*").eq("id", jobId).maybeSingle();
+    if (loadError || !row) return;
+    if (row.status !== "pending") return;
 
-    return { ok: false, error: upstream.error, jobId };
-  }
+    const actingUserId = row.user_id as string;
+    const prompt = row.prompt as string;
+    const modelId = row.model as string;
+    const aspectRatio = typeof row.aspect_ratio === "string" && row.aspect_ratio ? row.aspect_ratio : "auto";
+    const imageSize = typeof row.image_size === "string" && row.image_size ? row.image_size : "1K";
 
-  const persisted = await persistJobImageToStorage(admin, actingUserId, jobId, upstream.imageUrl);
-
-  const finalUrl = persisted.ok ? persisted.displayUrl : persisted.fallbackUrl;
-
-  const { error: successUpdateError } = await admin
-    .from("image_jobs")
-    .update({
-      status: "succeeded",
-      image_url: finalUrl,
-      storage_path: persisted.ok ? persisted.storagePath : null,
-      upstream_request_id: upstream.upstreamRequestId ?? null,
-      credits_charged: creditCost,
-    })
-    .eq("id", jobId);
-
-  let finalUpdateError = successUpdateError;
-  if (isCreditsChargedColumnMissing(successUpdateError)) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn(
-        "[run-generate-image] image_jobs.credits_charged 缺失，已用不含该列的 UPDATE 兜底成功。请在 Supabase 执行 migration：20260429100000_image_jobs_credits_charged.sql",
-      );
+    const selected = getImageModel(modelId);
+    if (!selected) {
+      await admin
+        .from("image_jobs")
+        .update({ status: "failed", error_message: "模型不可用或已禁用" })
+        .eq("id", jobId)
+        .eq("status", "pending");
+      return;
     }
-    // Backward compatibility: allow generation to succeed before this migration is applied.
-    const { error: retryWithoutCreditsError } = await admin
+
+    const creditCost =
+      typeof row.credit_cost === "number" && row.credit_cost >= 0
+        ? row.credit_cost
+        : selected.creditsPerGeneration;
+
+    const testing = isGenerationTestingMode();
+    const { data: profile, error: profileReadError } = await admin
+      .from("profiles")
+      .select("balance_images")
+      .eq("id", actingUserId)
+      .maybeSingle();
+
+    if (profileReadError || !profile) {
+      await admin
+        .from("image_jobs")
+        .update({ status: "failed", error_message: "用户资料不存在，已取消生成" })
+        .eq("id", jobId)
+        .eq("status", "pending");
+      return;
+    }
+
+    if (!testing && profile.balance_images < creditCost) {
+      await admin
+        .from("image_jobs")
+        .update({
+          status: "failed",
+          error_message: `积分不足（本模型需 ${creditCost} 积分，当前 ${profile.balance_images}）`,
+        })
+        .eq("id", jobId)
+        .eq("status", "pending");
+      return;
+    }
+
+    const rawRefs = row.reference_signed_urls as unknown;
+    const refFromDb = Array.isArray(rawRefs) ? rawRefs.filter((x): x is string => typeof x === "string") : [];
+    const refUrlsSafe = sanitizeReferenceImageUrls(refFromDb, actingUserId, 10);
+
+    const upstream = await requestUpstreamImage(prompt, modelId, {
+      aspectRatio,
+      imageSize,
+      referenceUrls: refUrlsSafe,
+    });
+
+    if (!upstream.ok) {
+      await admin
+        .from("image_jobs")
+        .update({
+          status: "failed",
+          error_message: upstream.error,
+          upstream_request_id: upstream.upstreamRequestId ?? null,
+        })
+        .eq("id", jobId)
+        .eq("status", "pending");
+      return;
+    }
+
+    const persisted = await persistJobImageToStorage(admin, actingUserId, jobId, upstream.imageUrl);
+    const finalUrl = persisted.ok ? persisted.displayUrl : persisted.fallbackUrl;
+
+    const { error: successUpdateError } = await admin
       .from("image_jobs")
       .update({
         status: "succeeded",
         image_url: finalUrl,
         storage_path: persisted.ok ? persisted.storagePath : null,
         upstream_request_id: upstream.upstreamRequestId ?? null,
+        credits_charged: creditCost,
       })
-      .eq("id", jobId);
-    finalUpdateError = retryWithoutCreditsError;
+      .eq("id", jobId)
+      .eq("status", "pending");
+
+    let finalUpdateError = successUpdateError;
+    if (isCreditsChargedColumnMissing(successUpdateError)) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn(
+          "[completeImageGenerationJob] image_jobs.credits_charged 缺失，已用不含该列的 UPDATE。请执行 migration：20260429100000_image_jobs_credits_charged.sql",
+        );
+      }
+      const { error: retryWithoutCreditsError } = await admin
+        .from("image_jobs")
+        .update({
+          status: "succeeded",
+          image_url: finalUrl,
+          storage_path: persisted.ok ? persisted.storagePath : null,
+          upstream_request_id: upstream.upstreamRequestId ?? null,
+        })
+        .eq("id", jobId)
+        .eq("status", "pending");
+      finalUpdateError = retryWithoutCreditsError;
+    }
+
+    if (finalUpdateError) {
+      await admin
+        .from("image_jobs")
+        .update({
+          status: "failed",
+          error_message: appendPostgrestTroubleshootHint(
+            "图片已生成但保存记录失败，请联系管理员。",
+            finalUpdateError,
+          ),
+        })
+        .eq("id", jobId)
+        .eq("status", "pending");
+      return;
+    }
+
+    if (testing) return;
+
+    const newBalance = profile.balance_images - creditCost;
+    const { error: balanceError } = await admin
+      .from("profiles")
+      .update({ balance_images: newBalance })
+      .eq("id", actingUserId);
+
+    if (balanceError) {
+      // 与同步路径一致：任务已成功落库，仅扣积分失败；不反刷为 failed，避免用户已拿到图却显示失败
+      console.error("[completeImageGenerationJob] 扣积分失败", balanceError);
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "服务端异常";
+    await admin
+      .from("image_jobs")
+      .update({ status: "failed", error_message: message })
+      .eq("id", jobId)
+      .eq("status", "pending");
+  }
+}
+
+/**
+ * 同步路径：prepare → complete → 组装返回（供 Server Action 与 POST /api/image/generate）。
+ */
+export async function buildGenerateImageResultFromJob(jobId: string): Promise<GenerateImageResult> {
+  const admin = createAdminClient();
+  const { data: row, error } = await admin
+    .from("image_jobs")
+    .select("status, image_url, error_message, model, user_id")
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (error || !row) {
+    return { ok: false, error: "任务不存在或无法读取" };
   }
 
-  if (finalUpdateError) {
-    return {
-      ok: false,
-      error: appendPostgrestTroubleshootHint(
-        "图片已生成但保存记录失败，请联系管理员。",
-        finalUpdateError,
-      ),
-      jobId,
-    };
+  if (row.status === "pending") {
+    return { ok: false, error: "任务仍在处理中", jobId };
   }
 
-  if (testing) {
-    return {
-      ok: true,
-      jobId,
-      imageUrl: finalUrl,
-      balanceImages: profile.balance_images,
-      priceCny: selected.priceCny,
-    };
+  if (row.status === "failed") {
+    return { ok: false, error: (row.error_message as string) || "生成失败", jobId };
   }
 
-  const newBalance = profile.balance_images - creditCost;
-  const { error: balanceError } = await admin
-    .from("profiles")
-    .update({ balance_images: newBalance })
-    .eq("id", actingUserId);
-
-  if (balanceError) {
-    return {
-      ok: false,
-      error: appendPostgrestTroubleshootHint(
-        "图片已保存但扣积分失败，请联系管理员。",
-        balanceError,
-      ),
-      jobId,
-    };
-  }
+  const uid = row.user_id as string;
+  const { data: profile } = await admin.from("profiles").select("balance_images").eq("id", uid).maybeSingle();
+  const modelId = row.model as string;
+  const priceCny = priceCnyForModelId(modelId);
 
   return {
     ok: true,
     jobId,
-    imageUrl: finalUrl,
-    balanceImages: newBalance,
-    priceCny: selected.priceCny,
+    imageUrl: row.image_url as string,
+    balanceImages: profile?.balance_images ?? 0,
+    priceCny,
   };
+}
+
+export async function runGenerateImageJob(
+  promptRaw: string,
+  modelIdRaw: string,
+  testNoteRaw?: string | null,
+  drawInput?: RunGenerateDrawInput,
+): Promise<GenerateImageResult> {
+  const prep = await prepareImageGenerationJob(promptRaw, modelIdRaw, testNoteRaw, drawInput);
+  if (!prep.ok) return prep;
+
+  await completeImageGenerationJob(prep.jobId);
+  return buildGenerateImageResultFromJob(prep.jobId);
 }
