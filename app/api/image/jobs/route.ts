@@ -6,7 +6,8 @@ import { completeImageGenerationJob, prepareImageGenerationJob } from "@/lib/run
 import { normalizeLocale } from "@/lib/i18n/locale";
 import { pickModerationDict } from "@/lib/i18n/moderation";
 
-export const maxDuration = 60;
+// 需要覆盖上游轮询的最长时长（约 120s）
+export const maxDuration = 120;
 
 /**
  * 创建异步生图任务：立即返回 `jobId`（202），实际出图在 `after()` 中继续执行；
