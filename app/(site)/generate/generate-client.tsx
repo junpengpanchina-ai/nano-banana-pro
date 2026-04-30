@@ -77,14 +77,56 @@ export function GenerateClient({
   const eventSourceRef = useRef<EventSource | null>(null);
   const streamDoneRef = useRef(false);
   const streamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     return () => {
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
       if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
+
+  async function pollJobUntilDone(jobId: string) {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    let ticks = 0;
+    pollTimerRef.current = setInterval(async () => {
+      if (streamDoneRef.current) return;
+      ticks += 1;
+      try {
+        const res = await fetch(`/api/image/jobs/${encodeURIComponent(jobId)}`, {
+          method: "GET",
+          credentials: "include",
+          headers: { "Accept-Language": navigator.language },
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          status?: string;
+          imageUrl?: string;
+          error?: string;
+          balanceImages?: number;
+        };
+        if (!res.ok || !data.ok) return;
+        if (data.status === "pending") {
+          setStreamProgress((prev) => Math.max(prev, Math.min(10 + ticks * 6, 95)));
+          return;
+        }
+        streamDoneRef.current = true;
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        setLoading(false);
+        setStreamProgress(0);
+        if (data.status === "failed") {
+          setError(data.error ?? dict.serverErrorTryLater);
+          return;
+        }
+        if (data.imageUrl) setImageUrl(data.imageUrl);
+        if (typeof data.balanceImages === "number") setBalance(data.balanceImages);
+      } catch {
+        // ignore transient poll errors
+      }
+    }, 2000);
+  }
 
   function allowedSizesForModelId(id: string): ImageSizeOption[] {
     const m = models.find((x) => x.id === id);
@@ -165,6 +207,7 @@ export function GenerateClient({
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
     if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     streamDoneRef.current = false;
 
     setError(null);
@@ -220,12 +263,21 @@ export function GenerateClient({
         setError(dict.timeoutWaiting);
         setLoading(false);
         setStreamProgress(0);
+        void pollJobUntilDone(jid);
       }, 130_000);
 
       const es = new EventSource(`/api/image/jobs/${encodeURIComponent(jid)}/events`);
       eventSourceRef.current = es;
+      // 如果 SSE 被代理缓冲，5 秒内收不到任何消息就自动切换到轮询兜底
+      const sseFallbackTimer = setTimeout(() => {
+        if (streamDoneRef.current) return;
+        es.close();
+        eventSourceRef.current = null;
+        void pollJobUntilDone(jid);
+      }, 5000);
 
       es.onmessage = (ev) => {
+        clearTimeout(sseFallbackTimer);
         let payload: {
           type?: string;
           n?: number;
@@ -251,6 +303,7 @@ export function GenerateClient({
           if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
           es.close();
           eventSourceRef.current = null;
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
           setLoading(false);
           setStreamProgress(0);
           if (!payload.ok) {
@@ -263,13 +316,12 @@ export function GenerateClient({
       };
 
       es.onerror = () => {
+        clearTimeout(sseFallbackTimer);
         es.close();
         eventSourceRef.current = null;
         if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current);
         if (!streamDoneRef.current) {
-          setLoading(false);
-          setStreamProgress(0);
-          setError(dict.connectionLostCheckDashboard);
+          void pollJobUntilDone(jid);
         }
       };
     } catch {
