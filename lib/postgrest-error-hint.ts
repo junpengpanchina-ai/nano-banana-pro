@@ -11,11 +11,20 @@ export type PostgrestLikeError = {
 
 const CREDITS_MIGRATION =
   "supabase/migrations/20260429100000_image_jobs_credits_charged.sql";
+const ASYNC_QUEUE_MIGRATION =
+  "supabase/migrations/20260429140000_image_jobs_async_queue.sql";
 
 export function isCreditsChargedColumnMissing(error: PostgrestLikeError): boolean {
   if (!error) return false;
   if (error.code === "42703") return true;
   return (error.message ?? "").includes("credits_charged");
+}
+
+export function isAsyncQueueColumnsMissing(error: PostgrestLikeError): boolean {
+  if (!error) return false;
+  if (error.code !== "42703" && error.code !== undefined) return false;
+  const msg = error.message ?? "";
+  return msg.includes("credit_cost") || msg.includes("reference_signed_urls");
 }
 
 function truncateForDisplay(s: string, max = 220): string {
@@ -35,6 +44,9 @@ export function appendPostgrestTroubleshootHint(
 
   if (isCreditsChargedColumnMissing(error)) {
     return `${userMessage}（排障：表 image_jobs 缺少列 credits_charged 或未执行迁移。请在 Supabase SQL Editor 执行仓库内 ${CREDITS_MIGRATION}。）`;
+  }
+  if (isAsyncQueueColumnsMissing(error)) {
+    return `${userMessage}（排障：表 image_jobs 缺少异步队列相关列 credit_cost / reference_signed_urls。请在 Supabase SQL Editor 执行仓库内 ${ASYNC_QUEUE_MIGRATION}。）`;
   }
 
   if (error.code === "42703") {

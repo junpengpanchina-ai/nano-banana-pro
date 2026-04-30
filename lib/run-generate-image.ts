@@ -21,7 +21,17 @@ export type GenerateImageResult =
   | { ok: true; jobId: string; imageUrl: string; balanceImages: number; priceCny: number }
   | { ok: false; error: string; jobId?: string };
 
-export type PrepareImageJobResult = { ok: true; jobId: string } | { ok: false; error: string };
+export type PrepareImageJobFailReason =
+  | "unauthorized"
+  | "insufficient_credits"
+  | "model_unavailable"
+  | "no_models"
+  | "validation_failed"
+  | "db_error";
+
+export type PrepareImageJobResult =
+  | { ok: true; jobId: string }
+  | { ok: false; error: string; reason: PrepareImageJobFailReason };
 
 /**
  * Server-only: auth、（可选）扣次、上游出图、写入 Storage 并记 48h 签名链（失败则回落上游 URL）。
@@ -51,13 +61,13 @@ export async function prepareImageGenerationJob(
   const locale = drawInput?.locale ?? null;
   const dict = pickModerationDict(normalizeLocale(locale));
   if (getEnabledImageModels().length === 0) {
-    return { ok: false, error: dict.noModelsEnabled };
+    return { ok: false, error: dict.noModelsEnabled, reason: "no_models" };
   }
 
   const modelId = modelIdRaw.trim();
   const selected = getImageModel(modelId);
   if (!selected) {
-    return { ok: false, error: dict.modelUnavailable };
+    return { ok: false, error: dict.modelUnavailable, reason: "model_unavailable" };
   }
 
   let testNote: string | null = null;
@@ -76,7 +86,7 @@ export async function prepareImageGenerationJob(
   const poolUserId = getAnonymousGeneratePoolUserId();
   const actingUserId = user?.id ?? poolUserId ?? null;
   if (!actingUserId) {
-    return { ok: false, error: dict.unauthorized };
+    return { ok: false, error: dict.unauthorized, reason: "unauthorized" };
   }
 
   const refUrls = sanitizeReferenceImageUrls(drawInput?.referenceImageUrls ?? [], actingUserId, 10);
@@ -86,7 +96,7 @@ export async function prepareImageGenerationJob(
     locale: drawInput?.locale ?? null,
   });
   if (!validated.ok) {
-    return { ok: false, error: validated.error };
+    return { ok: false, error: validated.error, reason: "validation_failed" };
   }
   const prompt = validated.prompt;
 
@@ -105,6 +115,7 @@ export async function prepareImageGenerationJob(
         `用户资料读取失败：${profileError.message}`,
         profileError,
       ),
+      reason: "db_error",
     };
   }
   if (!profile) {
@@ -113,6 +124,7 @@ export async function prepareImageGenerationJob(
       error: poolUserId && !user
         ? "免登录测试：请在 Supabase 注册测试账号并将 UUID 填入 ANONYMOUS_GENERATE_AS_USER_ID（须已有 profiles 行）"
         : "用户资料不存在",
+      reason: "db_error",
     };
   }
 
@@ -122,6 +134,7 @@ export async function prepareImageGenerationJob(
     return {
       ok: false,
       error: dict.insufficientCredits(creditCost, profile.balance_images),
+      reason: "insufficient_credits",
     };
   }
 
@@ -147,7 +160,11 @@ export async function prepareImageGenerationJob(
     const base = insertError?.message
       ? `创建任务失败：${insertError.message}`
       : "创建任务失败";
-    return { ok: false, error: appendPostgrestTroubleshootHint(base, insertError ?? null) };
+    return {
+      ok: false,
+      error: appendPostgrestTroubleshootHint(base, insertError ?? null),
+      reason: "db_error",
+    };
   }
 
   return { ok: true, jobId: job.id as string };

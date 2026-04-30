@@ -64,14 +64,11 @@ export async function POST(request: Request) {
   });
 
   if (!prep.ok) {
-    const err = prep.error;
     let status = 400;
-    if (err === dict.unauthorized) status = 401;
-    // locale-specific insufficient credits: detect via 402 fallback when it contains a number pattern is unreliable;
-    // so keep a conservative heuristic.
-    else if (err.toLowerCase().includes("credit") || err.includes("积分") || err.includes("積分")) status = 402;
-    else if (err.includes("管理员")) status = 500;
-    return NextResponse.json({ ok: false, error: err }, { status });
+    if (prep.reason === "unauthorized") status = 401;
+    else if (prep.reason === "insufficient_credits") status = 402;
+    else if (prep.reason === "db_error") status = 500;
+    return NextResponse.json({ ok: false, error: prep.error, reason: prep.reason }, { status });
   }
 
   after(() =>

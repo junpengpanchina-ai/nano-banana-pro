@@ -66,7 +66,9 @@ export async function POST(request: Request) {
     const err = result.error;
     let status = 400;
     if (err === dict.unauthorized) status = 401;
-    else if (err.toLowerCase().includes("credit") || err.includes("积分") || err.includes("積分")) status = 402;
+    // Avoid misclassifying schema errors like `credit_cost` as 402.
+    else if (err.includes("积分不足") || err.includes("積分不足") || err.includes("Insufficient credits")) status = 402;
+    else if (err.includes("排障") || err.includes("迁移") || err.includes("migration")) status = 500;
     else if (err.includes("管理员")) status = 500;
     return NextResponse.json(result, { status });
   }
