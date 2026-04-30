@@ -35,6 +35,25 @@ function parseJsonSafe(text: string): unknown {
   }
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function looksLikeTimeoutMessage(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return lower.includes("timeout") || lower.includes("timed out") || lower.includes("超时");
+}
+
 /** 官方文档要求携带 `urls`（参考图）；纯文生图可传空数组，或通过环境变量传入 URL。 */
 function getUpstreamReferenceUrls(): string[] {
   const raw = process.env.UPSTREAM_REFERENCE_URLS?.trim();
@@ -63,18 +82,25 @@ function resolveDrawAndResultUrls(): { drawUrl: string; resultUrl: string } | { 
     return { drawUrl: drawFull, resultUrl: resultFull };
   }
 
-  const base = process.env.UPSTREAM_BASE_URL?.replace(/\/+$/, "");
-  const drawPath = process.env.UPSTREAM_DRAW_PATH?.trim();
-  const resultPath = process.env.UPSTREAM_RESULT_PATH?.trim();
-  if (base && drawPath && resultPath) {
-    const d = drawPath.startsWith("/") ? drawPath : `/${drawPath}`;
-    const r = resultPath.startsWith("/") ? resultPath : `/${resultPath}`;
+  // "Black box" defaults (no need to configure URL envs):
+  // Grsai Nano Banana (CN direct). You can still override via env vars above.
+  const DEFAULT_BASE = "https://grsai.dakka.com.cn";
+  const DEFAULT_DRAW_PATH = "/v1/draw/nano-banana";
+  const DEFAULT_RESULT_PATH = "/v1/draw/result";
+
+  const base = (process.env.UPSTREAM_BASE_URL?.trim() || DEFAULT_BASE).replace(/\/+$/, "");
+  const drawPath = process.env.UPSTREAM_DRAW_PATH?.trim() || DEFAULT_DRAW_PATH;
+  const resultPath = process.env.UPSTREAM_RESULT_PATH?.trim() || DEFAULT_RESULT_PATH;
+
+  const d = drawPath.startsWith("/") ? drawPath : `/${drawPath}`;
+  const r = resultPath.startsWith("/") ? resultPath : `/${resultPath}`;
+  if (base) {
     return { drawUrl: `${base}${d}`, resultUrl: `${base}${r}` };
   }
 
   return {
     error:
-      "请在部署环境配置 UPSTREAM_DRAW_URL 与 UPSTREAM_RESULT_URL（完整 HTTPS 地址），或同时配置 UPSTREAM_BASE_URL、UPSTREAM_DRAW_PATH、UPSTREAM_RESULT_PATH。",
+      "服务未配置上游地址（可选）：你可以设置 UPSTREAM_DRAW_URL/UPSTREAM_RESULT_URL，或 UPSTREAM_BASE_URL/UPSTREAM_DRAW_PATH/UPSTREAM_RESULT_PATH。未设置时将使用内置默认地址。",
   };
 }
 
@@ -110,16 +136,18 @@ export async function requestUpstreamImage(
     return { ok: false, error: "服务未配置上游密钥或未指定模型" };
   }
 
-  const deadline = Date.now() + 120_000;
+  const deadlineMs = Number(process.env.UPSTREAM_DEADLINE_MS ?? "120000") || 120_000;
+  const deadline = Date.now() + Math.max(10_000, deadlineMs);
   const pollIntervalMs = Number(process.env.UPSTREAM_POLL_INTERVAL_MS ?? "2000") || 2000;
+  const httpTimeoutMs = Number(process.env.UPSTREAM_HTTP_TIMEOUT_MS ?? "30000") || 30_000;
   const userRefs = draw.referenceUrls ?? [];
   const envRefs = getUpstreamReferenceUrls();
   const mergedReferenceUrls = [...userRefs, ...envRefs].slice(0, 10);
 
-  const controller = new AbortController();
-
   try {
-    const createRes = await fetch(drawUrl, {
+    const createRes = await fetchWithTimeout(
+      drawUrl,
+      {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -134,8 +162,9 @@ export async function requestUpstreamImage(
         webHook: "-1",
         shutProgress: false,
       }),
-      signal: controller.signal,
-    });
+      },
+      httpTimeoutMs,
+    );
 
     const createText = await createRes.text();
     const ct = createRes.headers.get("content-type") ?? "";
@@ -163,22 +192,27 @@ export async function requestUpstreamImage(
         .join(" — ");
       return {
         ok: false,
-        error: msg || `创建任务失败（code: ${String(createJson.code)}）`,
+        error: looksLikeTimeoutMessage(msg)
+          ? `上游超时/繁忙：${msg}（建议稍后重试，或在部署环境把 UPSTREAM_DEADLINE_MS 调大，例如 180000）`
+          : msg || `创建任务失败（code: ${String(createJson.code)}）`,
       };
     }
 
     const taskId = createJson.data.id;
 
     while (Date.now() < deadline) {
-      const pollRes = await fetch(resultUrl, {
+      const pollRes = await fetchWithTimeout(
+        resultUrl,
+        {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ id: taskId }),
-        signal: controller.signal,
-      });
+        },
+        httpTimeoutMs,
+      );
 
       const pollText = await pollRes.text();
       const pollJson = parseJsonSafe(pollText) as DrawResultResponse | null;
@@ -228,7 +262,11 @@ export async function requestUpstreamImage(
         const parts = [reason, detail].filter(Boolean);
         return {
           ok: false,
-          error: parts.length ? parts.join(": ") : "生成失败",
+          error: parts.length
+            ? (looksLikeTimeoutMessage(parts.join(": "))
+                ? `上游超时/繁忙：${parts.join(": ")}（建议稍后重试）`
+                : parts.join(": "))
+            : "生成失败",
           upstreamRequestId: taskId,
         };
       }
@@ -249,13 +287,16 @@ export async function requestUpstreamImage(
 
     return {
       ok: false,
-      error: "等待结果超时，请稍后重试",
+      error: `等待结果超时（${Math.round(deadlineMs / 1000)}s），请稍后重试；或在部署环境把 UPSTREAM_DEADLINE_MS 调大。`,
       upstreamRequestId: taskId,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : "上游请求异常";
     if (message.includes("abort")) {
-      return { ok: false, error: "上游请求中断" };
+      return {
+        ok: false,
+        error: `上游请求超时/中断（可在部署环境设置 UPSTREAM_HTTP_TIMEOUT_MS / UPSTREAM_DEADLINE_MS）`,
+      };
     }
     return { ok: false, error: message };
   }
